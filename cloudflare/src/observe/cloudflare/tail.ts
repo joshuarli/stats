@@ -270,7 +270,7 @@ function readServiceOperation(message: unknown, operations: ReadonlySet<string>)
   const rowsField = field(message, "rows");
   const r2Field = field(message, "r2");
   const lagField = field(message, "workLagMs");
-  if (typeof operation !== "string" || !operations.has(operation) || typeof field(message, "synthetic") !== "boolean") return null;
+  if (typeof operation !== "string" || !operations.has(operation)) return null;
   const rows = rowsField === null ? null : readRows(rowsField);
   if (rowsField !== null && rows === null) return null;
   const r2 = r2Field === undefined || r2Field === null ? null : readR2(r2Field);
@@ -287,11 +287,10 @@ function readR2(value: unknown): R2Account | null {
 
 function readOperation(message: unknown): OperationSummary | null {
   const id = field(message, "operation");
-  const synthetic = field(message, "synthetic");
   const rows = readRows(field(message, "rows"));
   const work = field(message, "work");
-  if (typeof id !== "string" || !(OPERATION_IDS as readonly string[]).includes(id) || typeof synthetic !== "boolean" || rows === null) return null;
-  const common = { synthetic, rows };
+  if (typeof id !== "string" || !(OPERATION_IDS as readonly string[]).includes(id) || rows === null) return null;
+  const common = { rows };
   switch (id as OperationId) {
     case "host.ingest": {
       const rejected = field(work, "rejected");

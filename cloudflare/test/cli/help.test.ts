@@ -43,7 +43,7 @@ await test("help states what an agent needs to run each command", async () => {
   const top = (await runCli(["--help"])).stdout;
   for (const name of commandNames) assert.ok(top.includes(name), name);
   for (const needle of ["sends no credential", "STATSCTL_TARGET", "half-open", "UTC", "NO_COLOR", "exit codes", "[mutation]"]) assert.ok(top.includes(needle), needle);
-  const check = (await runCli(["check", "ingest", "--help"])).stdout;
+  const check = (await runCli(["deploy", "mark", "--help"])).stdout;
   assert.match(check, /access: MUTATION/);
   const verify = (await runCli(["verify", "--help"])).stdout;
   assert.match(verify, /--timeout SPAN.*default 30m/);
@@ -55,7 +55,7 @@ await test("help workflow carries every recipe with the documented spellings", a
   for (const needle of [
     "statsctl projects", "statsctl cost --project stats --window 1h --json", "snapshot --project stats", "--out", "cost --input",
     "deployments --project stats", "compare --project stats --deployment", "verify --project stats --deployment", "--policy", "--wait --timeout",
-    "observe routes --project stats --window", "check ingest --credential-file", "insufficient-data", "confounded", "inconclusive",
+    "observe routes --project stats --window", "check hosts --hosts", "insufficient-data", "confounded", "inconclusive",
     "Resume after an interruption", "Why a lower monthly estimate is not necessarily a win"
   ]) assert.ok(stdout.includes(needle), needle);
   assert.doesNotMatch(stdout, /coming soon|not yet|TODO/i);

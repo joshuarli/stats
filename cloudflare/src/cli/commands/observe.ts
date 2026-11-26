@@ -226,7 +226,6 @@ export const observeDeploymentCommand = defineCommand<DeploymentImpactPayload>({
 export interface SummarizedOperation {
   readonly operation: string;
   readonly workloadClass: string;
-  readonly synthetic: boolean;
   readonly count: number;
   readonly failed: number;
   readonly cpuMsSum: number;
@@ -274,8 +273,8 @@ function byCost<T extends { readonly cpuMsSum: number; readonly count: number }>
 function summarized(window: StatsWindow): SummarizedOperation[] {
   const totals = new Map<string, { -readonly [K in keyof SummarizedOperation]: SummarizedOperation[K] } & { lag: { count: number; maxMs: number; sumMs: number } }>();
   for (const row of window.operations) {
-    const key = [row.operation, row.workloadClass, row.synthetic].join("\u0000");
-    const total = totals.get(key) ?? { operation: row.operation, workloadClass: row.workloadClass, synthetic: row.synthetic, count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0, rowsRead: 0, rowsWritten: 0, statements: 0, lag: { count: 0, maxMs: 0, sumMs: 0 } };
+    const key = [row.operation, row.workloadClass].join("\u0000");
+    const total = totals.get(key) ?? { operation: row.operation, workloadClass: row.workloadClass, count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0, rowsRead: 0, rowsWritten: 0, statements: 0, lag: { count: 0, maxMs: 0, sumMs: 0 } };
     total.count += row.count;
     total.failed += row.failed;
     total.cpuMsSum += row.cpuMsSum;
@@ -327,7 +326,7 @@ export const observeOperationsCommand = defineCommand<OperationsPayload>({
   description: [
     "Reads one exact observe window for an observed service and totals it by operation. Read-only.",
     "The window ends at the end of the current five-minute bucket and spans --window before that, so it includes the bucket in progress.",
-    "source \"summaries\" (a service that keeps every invocation, such as stats): rows come from the operation summaries each invocation published, by operation, workload class and synthetic flag, with SQLite rows read and written, statements, and ingest lag.",
+    "source \"summaries\" (a service that keeps every invocation, such as stats): rows come from the operation summaries each invocation published, by operation, and workload class, with SQLite rows read and written, statements, and ingest lag.",
     "source \"counts\" (a sampled service such as nanoshop-storied): rows come from the exact counts of every kept and sampled-out invocation, by stage and route. operation is the name the invocation's operation summary published, or else the service policy's name for that route (request.<route>, store.rpc.<method>, store.alarm), or null.",
     "rows totals the SQLite rows read and written and the statements of the invocations whose summary carried a row account (rows.accounted of count); null when none did, as for an invocation that has no SQLite storage of its own. workLag totals the work lag the summaries reported (how late the work the invocation ran was, by the producer's own definition): count, maxMs and sumMs; null when none reported one. Neither is ingest lag."
   ],
@@ -369,7 +368,7 @@ export const observeOperationsCommand = defineCommand<OperationsPayload>({
     }
     return [...lines, ...table([
       ["operation", "class", "count", "failed", "cpu", "wall", "rows read", "rows written", "statements", "lag max"],
-      ...payload.operations.slice(0, TEXT_ROWS).map(row => [`${row.operation}${row.synthetic ? " (synthetic)" : ""}`, row.workloadClass || "-", String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum), String(row.rowsRead), String(row.rowsWritten), String(row.statements), ms(row.lag.maxMs)])
+      ...payload.operations.slice(0, TEXT_ROWS).map(row => [row.operation, row.workloadClass || "-", String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum), String(row.rowsRead), String(row.rowsWritten), String(row.statements), ms(row.lag.maxMs)])
     ]), ...omitted(payload.operations.length)];
   }
 });

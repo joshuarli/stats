@@ -15,11 +15,11 @@ const POLICY: MessagePolicy = { safeNames: new Set() };
 const CONTEXT = { traceId: "7bcf42a3d155dee9563e537e144790e4", spanId: "1b1e95b0d4dcde81" };
 const ROWS = { read: 3, written: 5, statements: 4 };
 const INGEST: OperationSummary = {
-  operation: "host.ingest", synthetic: false, rows: ROWS,
+  operation: "host.ingest", rows: ROWS,
   work: { received: 10, persisted: 7, duplicate: 2, rejected: { invalid_sample: 1, too_old: 0, conflict: 0 }, inputBytes: 900 }
 };
 const HISTORY: OperationSummary = {
-  operation: "host.history", synthetic: false, rows: ROWS, workloadClass: "1h:cpu+memory",
+  operation: "host.history", rows: ROWS, workloadClass: "1h:cpu+memory",
   work: { points: 60, cells: 120, outputBytes: 4000, cache: "rebuilt" }
 };
 
@@ -52,13 +52,13 @@ await test("usr-memories accepts every published operation name with rows and re
   const policy = POLICIES["usr-memories"];
   for (const operation of MEMORIES_OPERATIONS) {
     const reduction = reduceTailItem(memoriesItem({
-      kind: "operation", ...CONTEXT, operation, synthetic: false, rows: ROWS
+      kind: "operation", ...CONTEXT, operation, rows: ROWS
     }), policy);
     assert.equal(reduction.kind, "observed", operation);
     if (reduction.kind === "observed") assert.deepEqual(reduction.invocation.trace, CONTEXT);
   }
   const unknown = reduceTailItem(memoriesItem({
-    kind: "operation", ...CONTEXT, operation: "sync.unknown", synthetic: false, rows: ROWS
+    kind: "operation", ...CONTEXT, operation: "sync.unknown", rows: ROWS
   }), policy);
   assert.equal(unknown.kind, "rejected");
 });
@@ -71,9 +71,9 @@ await test("an operation message supplies the trace context and the operation su
     assert.deepEqual(reduction.invocation.trace, CONTEXT);
     assert.deepEqual(reduction.invocation.operation, summary);
   }
-  const collector: OperationSummary = { operation: "collector.record", synthetic: false, rows: ROWS, work: { runs: 1, metricRows: 4, hourRollups: 1, upstreamQueries: 3 } };
-  const retention: OperationSummary = { operation: "cleanup.retention", synthetic: true, rows: ROWS, work: { expired: 5, backlog: 0 } };
-  const poll: OperationSummary = { operation: "deployments.poll", synthetic: false, rows: ROWS };
+  const collector: OperationSummary = { operation: "collector.record", rows: ROWS, work: { runs: 1, metricRows: 4, hourRollups: 1, upstreamQueries: 3 } };
+  const retention: OperationSummary = { operation: "cleanup.retention", rows: ROWS, work: { expired: 5, backlog: 0 } };
+  const poll: OperationSummary = { operation: "deployments.poll", rows: ROWS };
   for (const summary of [collector, retention, poll]) {
     const reduction = reduce(message(summary));
     assert.deepEqual(reduction.kind === "observed" ? reduction.invocation.operation : null, summary);
@@ -85,7 +85,6 @@ await test("malformed operation messages and unknown kinds reject the invocation
   const withWork = (change: Record<string, unknown>) => ({ ...good, work: { ...INGEST.operation === "host.ingest" ? INGEST.work : {}, ...change } });
   const bad: unknown[] = [
     { ...good, operation: "host.made-up" },
-    { ...good, synthetic: "no" },
     { ...good, rows: { read: 1, written: 2 } },
     { ...good, rows: { ...ROWS, read: -1 } },
     { ...good, rows: { ...ROWS, written: 1.5 } },
@@ -98,7 +97,7 @@ await test("malformed operation messages and unknown kinds reject the invocation
     { ...message(HISTORY), workloadClass: "Has Spaces" },
     { ...message(HISTORY), workloadClass: undefined },
     { ...message(HISTORY), work: { points: 1, cells: 1, outputBytes: 1, cache: "stale" } },
-    { ...message({ operation: "deployments.poll", synthetic: false, rows: ROWS }), work: { runs: 1 } },
+    { ...message({ operation: "deployments.poll", rows: ROWS }), work: { runs: 1 } },
     { kind: "operations", ...CONTEXT }
   ];
   for (const value of bad) assert.equal(reduce(value).kind, "rejected", JSON.stringify(value));
@@ -143,8 +142,8 @@ await test("operations in one receipt bucket upsert into one row, and ingest wri
   assert.equal(rows.length, 1);
   const row = rows[0]!;
   assert.deepEqual(
-    [row["bucket_at"], row["version"], row["operation"], row["workload_class"], row["synthetic"], row["count"], row["failed"], row["cpu_ms_sum"], row["wall_ms_sum"]],
-    [BUCKET, VERSION, "host.ingest", "", 0, 40, 1, 80, 1200]
+    [row["bucket_at"], row["version"], row["operation"], row["workload_class"], row["count"], row["failed"], row["cpu_ms_sum"], row["wall_ms_sum"]],
+    [BUCKET, VERSION, "host.ingest", "", 40, 1, 80, 1200]
   );
   assert.deepEqual([row["rows_read"], row["rows_written"], row["statements"]], [120, 200, 160]);
   assert.deepEqual([row["lag_count"], row["lag_ms_max"], row["lag_ms_sum"]], [40, 11_000, 20 * 1_000 + 20 * 11_000]);
@@ -159,7 +158,7 @@ await test("operations bucket by event time capped at receipt, so a late batch l
   assert.deepEqual(rows.map(row => ({ ...row })), [{ bucket_at: T0 + OPERATION_BUCKET_MS, count: 2, lag_ms_max: 2 * OPERATION_BUCKET_MS - 10, lag_ms_sum: 2 * OPERATION_BUCKET_MS - 10 }]);
 });
 
-await test("operations separate by bucket, class, and synthetic flag, and duplicates are not counted twice", async () => {
+await test("operations separate by bucket and class, and duplicates are not counted twice", async () => {
   const db = database();
   const history = reduce(message(HISTORY));
   const first = await operationInvocation(1);
@@ -168,16 +167,48 @@ await test("operations separate by bucket, class, and synthetic flag, and duplic
   ingest(db, [await operationInvocation(4, { eventAtMs: T0 + OPERATION_BUCKET_MS })], NOW + OPERATION_BUCKET_MS);
     const classed = history.kind === "observed" ? await prepareInvocation({ ...history.invocation, trace: worker(2).trace, eventAtMs: T0 }, POLICY) : first;
   ingest(db, [classed], NOW);
-  const synthetic = reduce(message({ ...INGEST, synthetic: true }));
-  ingest(db, [synthetic.kind === "observed" ? await prepareInvocation({ ...synthetic.invocation, trace: worker(3).trace, eventAtMs: T0 }, POLICY) : first], NOW);
-  const rows = db.rows<{ operation: string; workload_class: string; synthetic: number; count: number }>("SELECT operation, workload_class, synthetic, count FROM observe_operations ORDER BY bucket_at, operation, synthetic");
+  const rows = db.rows<{ operation: string; workload_class: string; count: number }>("SELECT operation, workload_class, count FROM observe_operations ORDER BY bucket_at, operation");
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(DISTINCT bucket_at) AS n FROM observe_operations")[0]!.n, 2);
   assert.deepEqual(rows.map(row => ({ ...row })), [
-    { operation: "host.history", workload_class: "1h:cpu+memory", synthetic: 0, count: 1 },
-    { operation: "host.ingest", workload_class: "", synthetic: 0, count: 1 },
-    { operation: "host.ingest", workload_class: "", synthetic: 1, count: 1 },
-    { operation: "host.ingest", workload_class: "", synthetic: 0, count: 1 }
+    { operation: "host.history", workload_class: "1h:cpu+memory", count: 1 },
+    { operation: "host.ingest", workload_class: "", count: 1 },
+    { operation: "host.ingest", workload_class: "", count: 1 }
   ]);
+});
+
+await test("the previous operation schema keeps real rows and removes synthetic rows on upgrade", async () => {
+  const legacy = new DatabaseSync(":memory:");
+  const store = wrap(legacy);
+  store.run(`CREATE TABLE observe_operations (
+    bucket_at INTEGER NOT NULL, version TEXT NOT NULL, operation TEXT NOT NULL CHECK (operation IN ('host.ingest', 'host.history', 'project.history', 'collector.record', 'cleanup.retention', 'deployments.poll')),
+    workload_class TEXT NOT NULL, synthetic INTEGER NOT NULL CHECK (synthetic IN (0, 1)),
+    count INTEGER NOT NULL, lag_count INTEGER NOT NULL DEFAULT 0, lag_ms_max INTEGER NOT NULL DEFAULT 0,
+    lag_ms_sum INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL, cpu_ms_sum INTEGER NOT NULL,
+    wall_ms_sum INTEGER NOT NULL, rows_read INTEGER NOT NULL, rows_written INTEGER NOT NULL, statements INTEGER NOT NULL,
+    received INTEGER NOT NULL DEFAULT 0, persisted INTEGER NOT NULL DEFAULT 0, duplicate INTEGER NOT NULL DEFAULT 0,
+    rejected_invalid_sample INTEGER NOT NULL DEFAULT 0, rejected_too_old INTEGER NOT NULL DEFAULT 0, rejected_conflict INTEGER NOT NULL DEFAULT 0,
+    input_bytes INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0, cells INTEGER NOT NULL DEFAULT 0,
+    output_bytes INTEGER NOT NULL DEFAULT 0, cache_hit_304 INTEGER NOT NULL DEFAULT 0, cache_rebuilt INTEGER NOT NULL DEFAULT 0,
+    runs INTEGER NOT NULL DEFAULT 0, metric_rows INTEGER NOT NULL DEFAULT 0, hour_rollups INTEGER NOT NULL DEFAULT 0,
+    upstream_queries INTEGER NOT NULL DEFAULT 0, expired INTEGER NOT NULL DEFAULT 0, backlog_remaining INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket_at, version, operation, workload_class, synthetic)
+  ) WITHOUT ROWID`);
+  store.run("INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements, persisted) VALUES (?, ?, 'host.ingest', '', 0, 7, 1, 9, 10, 11, 12, 13, 14)", BUCKET, VERSION);
+  store.run("INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements, persisted) VALUES (?, ?, 'host.ingest', '', 1, 90, 0, 0, 0, 0, 0, 0, 90)", BUCKET, VERSION);
+  initializeStore(store);
+  initializeStore(store);
+  assert.equal(store.rows<{ name: string }>("PRAGMA table_info(observe_operations)").some(column => column.name === "synthetic"), false);
+  assert.deepEqual(store.rows<{ count: number; persisted: number }>("SELECT count, persisted FROM observe_operations").map(row => ({ ...row })), [{ count: 7, persisted: 14 }]);
+  ingest(store, [await operationInvocation(7)], NOW);
+  assert.deepEqual(store.rows<{ count: number; persisted: number }>("SELECT count, persisted FROM observe_operations").map(row => ({ ...row })), [{ count: 8, persisted: 21 }]);
+});
+
+await test("operation messages ignore unrelated extra top-level fields", () => {
+  const normal = reduce(message(INGEST));
+  for (const extra of [{ synthetic: false }, { synthetic: { arbitrary: 5 } }, { other: { arbitrary: 5 } }]) {
+    const extended = reduce({ ...message(INGEST), ...extra });
+    assert.deepEqual(extended, normal);
+  }
 });
 
 await test("opening a store populated before operations adds the table and keeps every row", async () => {
@@ -203,7 +234,7 @@ await test("cleanup expires operation buckets with the retention window and caps
   assert.equal(db.rows("SELECT 1 FROM observe_operations").length, 1);
   cleanup(db, NOW + RETENTION_MS + OPERATION_BUCKET_MS * 2);
   assert.equal(db.rows("SELECT 1 FROM observe_operations").length, 0);
-  db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < ${MAX_RETAINED_OPERATION_ROWS + 50}) INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements) SELECT ${NOW} + i, 'v', 'host.ingest', '', 0, 1, 0, 0, 0, 0, 0, 0 FROM n`);
+  db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < ${MAX_RETAINED_OPERATION_ROWS + 50}) INSERT INTO observe_operations (bucket_at, version, operation, workload_class, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements) SELECT ${NOW} + i, 'v', 'host.ingest', '', 1, 0, 0, 0, 0, 0, 0 FROM n`);
   cleanup(db, NOW);
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_operations")[0]!.n, MAX_RETAINED_OPERATION_ROWS);
 });

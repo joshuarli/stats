@@ -28,7 +28,6 @@ channel.publish({
   traceId,                       // 32 lowercase hex chars, not all zero
   spanId,                        // 16 lowercase hex chars, not all zero
   operation: "store.insert",     // ^[a-z][A-Za-z0-9_.-]{0,63}$
-  synthetic: false,
   rows: { read: cursor.rowsRead, written: cursor.rowsWritten, statements: 1 },
   r2: { classA: 1, classB: 0 }   // optional: R2 writes/lists are Class A, reads are Class B
 });

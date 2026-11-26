@@ -22,7 +22,7 @@ import { UUID, type DeploymentHistory, type DeploymentPoll } from "../../deploym
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readLatestDeployment, readDeploymentSync, readVersions, readVersionIds, saveDeploymentPoll } from "../../deployments/store.ts";
 import { readLimitedBytes, readLimitedText } from "../../body.ts";
 import { reportError } from "../../observe/producer/report.ts";
-import { hostHistoryClass, hostHistoryExtent, isSyntheticHost, OperationRun, projectHistoryClass, projectHistoryExtent, affectedBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
+import { hostHistoryClass, hostHistoryExtent, OperationRun, projectHistoryClass, projectHistoryExtent, affectedBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
 import type { Clock, Scheduler } from "../ports.ts";
 import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
@@ -368,14 +368,14 @@ export class InstallationCore {
     const workloadClass = projectHistoryClass(projectHistorySource(query, kinds, now), kinds);
     const etag = historyEtag(`project:coverage-v2:${project.id}`, version, windowKey, kinds.join("+"));
     if (etagMatches(request, etag)) {
-      run.describe(() => ({ operation: "project.history", synthetic: false, workloadClass, work: { points: 0, cells: 0, outputBytes: 0, cache: "hit-304" } }));
+      run.describe(() => ({ operation: "project.history", workloadClass, work: { points: 0, cells: 0, outputBytes: 0, cache: "hit-304" } }));
       return notModified(etag);
     }
     const { histories } = readProjectHistories(sql, project, query, kinds, now);
     const built = kinds.map(kind => histories[kind]!);
     const frame = kindsParam !== null ? encodeProjectBundle(project.id, built) : encodeProjectHistory(built[0]!);
     const extent = projectHistoryExtent(built);
-    run.describe(() => ({ operation: "project.history", synthetic: false, workloadClass, work: { ...extent, outputBytes: frame.byteLength, cache: "rebuilt" } }));
+    run.describe(() => ({ operation: "project.history", workloadClass, work: { ...extent, outputBytes: frame.byteLength, cache: "rebuilt" } }));
     return frameResponse(frame, etag);
   }
 
@@ -400,7 +400,7 @@ export class InstallationCore {
 
   async recordDeploymentPoll(poll: DeploymentPoll): Promise<void> {
     const operation = this.operationRun();
-    operation.describe(() => ({ operation: "deployments.poll", synthetic: false }));
+    operation.describe(() => ({ operation: "deployments.poll" }));
     try {
       this.assertOpen(operation.sql);
       if (!parseProjects(this.config.projects()).some(item => item.id === poll.project && item.worker === poll.worker)) throw new Error("unknown deployment project");
@@ -444,7 +444,7 @@ export class InstallationCore {
     let metricRowsWritten = 0;
     let metricRows = 0;
     let hourRollups = 0;
-    operation.describe(() => ({ operation: "collector.record", synthetic: false, work: { runs: run.ok ? 1 : 0, metricRows, hourRollups, upstreamQueries: run.upstreamQueries } }));
+    operation.describe(() => ({ operation: "collector.record", work: { runs: run.ok ? 1 : 0, metricRows, hourRollups, upstreamQueries: run.upstreamQueries } }));
     sql.transaction(() => {
       let written = 0;
       let samples = 0;
@@ -488,7 +488,7 @@ export class InstallationCore {
     const sql = operation.sql;
     let expired = 0;
     let backlog = 0;
-    operation.describe(() => ({ operation: "cleanup.retention", synthetic: false, work: { expired, backlog } }));
+    operation.describe(() => ({ operation: "cleanup.retention", work: { expired, backlog } }));
     try {
       const now = this.now();
       const finalized = sql.transaction(() => this.finalizeHours(sql, null));
@@ -523,13 +523,12 @@ export class InstallationCore {
 
   async ingest(request: Request, operation: OperationRun): Promise<Response> {
     const sql = operation.sql;
-    let synthetic = false;
     let received = 0;
     let inputBytes = 0;
     let persisted = 0;
     let duplicate = 0;
     const tally: Record<SampleRejection, number> = { invalid_sample: 0, too_old: 0, conflict: 0 };
-    operation.describe(() => ({ operation: "host.ingest", synthetic, work: { received, persisted, duplicate, rejected: { ...tally }, inputBytes } }));
+    operation.describe(() => ({ operation: "host.ingest", work: { received, persisted, duplicate, rejected: { ...tally }, inputBytes } }));
     if (request.method !== "POST") return this.reject("invalid_request", "POST required", 405);
     const media = mediaProblem(request.headers);
     if (media !== null) return this.reject("invalid_request", media, 415);
@@ -544,7 +543,6 @@ export class InstallationCore {
     const hash = await tokenHash(token);
     const authorized = this.authorize(sql, parsed.hostId, hash);
     if ("code" in authorized) return this.reject(authorized.code, "host credential rejected", authorized.status, parsed.hostId);
-    synthetic = isSyntheticHost(authorized.host.name);
 
     const now = this.now();
     const window = Math.floor(now / WINDOW_MS) * WINDOW_MS;
@@ -664,7 +662,7 @@ export class InstallationCore {
     const sql = operation.sql;
     try {
       if (path === "/ingest") return await this.ingest(request, operation);
-      if (path === "/hosts" && request.method === "GET") return json({ hosts: (await this.listHosts()).filter(host => !isSyntheticHost(host.name)) });
+      if (path === "/hosts" && request.method === "GET") return json({ hosts: await this.listHosts() });
       const latest = /^\/hosts\/(h_[0-9a-f]{32})\/latest$/u.exec(path);
       if (latest !== null && request.method === "GET") {
         const sample = await this.latest(latest[1]!);
@@ -695,12 +693,11 @@ export class InstallationCore {
           if (kind === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
           kinds = [kind];
         }
-        const synthetic = isSyntheticHost(found.name);
         const shape = this.historyShape(query, this.now());
         const workloadClass = hostHistoryClass(shape.resolution, kinds);
         const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(sql, found.host_id), `${historyWindowKey(query)}&to=${shape.toMs}&res=${shape.resolution}`, kinds.join("+"));
         if (etagMatches(request, etag)) {
-          operation.describe(() => ({ operation: "host.history", synthetic, workloadClass, work: { points: 0, cells: 0, outputBytes: 0, cache: "hit-304" } }));
+          operation.describe(() => ({ operation: "host.history", workloadClass, work: { points: 0, cells: 0, outputBytes: 0, cache: "hit-304" } }));
           return notModified(etag);
         }
         const build = this.historyWindow(sql, found.host_id, query);
@@ -708,7 +705,7 @@ export class InstallationCore {
         const columns = kinds.map(build);
         const frame = kindsParam !== null ? encodeHostBundle(found.host_id, columns) : encodeHostHistory(columns[0]!);
         const extent = hostHistoryExtent(columns);
-        operation.describe(() => ({ operation: "host.history", synthetic, workloadClass, work: { ...extent, outputBytes: frame.byteLength, cache: "rebuilt" } }));
+        operation.describe(() => ({ operation: "host.history", workloadClass, work: { ...extent, outputBytes: frame.byteLength, cache: "rebuilt" } }));
         return frameResponse(frame, etag);
       }
       if (path === "/projects" && request.method === "GET") return this.projectList(sql);

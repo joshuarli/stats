@@ -139,7 +139,7 @@ export class NodeApplicationEvents {
     const work = { ...event.work };
     delete work["sql_rows_read"];
     this.record({ atMs: event.atMs, operation: event.operation, outcome, durationMs: event.durationMs,
-      work: { ...work, synthetic: summary.synthetic ? 1 : 0 }, trace: { traceId, spanId: id(8) },
+      work, trace: { traceId, spanId: id(8) },
       ...(outcome === "error" ? { errorCode: event.operation } : {}) });
   }
 

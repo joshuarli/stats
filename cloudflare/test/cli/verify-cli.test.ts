@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CommandError, EXIT } from "../../src/cli/exit.ts";
+import { readSafetyFile } from "../../src/cli/verify/files.ts";
 import { POLICY_SCHEMA } from "../../src/cli/verify/policy.ts";
 import { runCli, sendJson } from "./support.ts";
 import { CANDIDATE, handler, harness, newWorld, POLICY } from "./verify-support.ts";
@@ -68,12 +69,31 @@ await test("a safety check file from another origin or without a result is refus
     const other = h.safetyFile({}, "https://elsewhere.example");
     await assert.rejects(h.run({ deployment: CANDIDATE.id, "safety-check-file": other }), (error: unknown) => error instanceof CommandError && error.code === "safety_check_invalid");
     const errorOnly = join(h.directory, "error.json");
-    writeFileSync(errorOnly, JSON.stringify({ schema: "statsctl/1", command: "check ingest", origin: h.origin.origin, error: { code: "unauthorized", message: "no" } }));
+    writeFileSync(errorOnly, JSON.stringify({ schema: "statsctl/1", command: "check hosts", origin: h.origin.origin, error: { code: "unauthorized", message: "no" } }));
     await assert.rejects(h.run({ deployment: CANDIDATE.id, "safety-check-file": errorOnly }), (error: unknown) => error instanceof CommandError && error.code === "safety_check_invalid");
     assert.equal(h.origin.seen.length, 0);
   } finally {
     await h.close();
   }
+});
+
+await test("host safety evidence requires every host and uses the oldest receipt", async () => {
+  const h = await harness(newWorld());
+  try {
+    const file = join(h.directory, "hosts.json");
+    const save = (hosts: unknown[], maxAgeMs = 120_000) => writeFileSync(file, JSON.stringify({ schema: "statsctl/1", command: "check hosts", origin: h.origin.origin, payload: { maxAgeMs, hosts } }));
+    const first = { name: "lisa", state: "reporting", lastReceivedAtMs: 100 };
+    const second = { name: "threadripper", state: "reporting", lastReceivedAtMs: 200 };
+    save([first, second]);
+    assert.equal(readSafetyFile(file, h.origin.origin).atMs, 100);
+    assert.equal(readSafetyFile(file, h.origin.origin).ok, true);
+    save([first, { ...second, state: "stale" }]);
+    assert.equal(readSafetyFile(file, h.origin.origin).failedHost, "threadripper");
+    save([first, first]);
+    assert.throws(() => readSafetyFile(file, h.origin.origin), /duplicate host names/u);
+    save([first], 120_001);
+    assert.throws(() => readSafetyFile(file, h.origin.origin), /maximum age/u);
+  } finally { await h.close(); }
 });
 
 await test("health --policy lists the policy's signals and a plain health leaves readiness empty", async () => {

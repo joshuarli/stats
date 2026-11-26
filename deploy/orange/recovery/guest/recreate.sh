@@ -1,27 +1,4 @@
 #!/bin/sh
-# Recreates the declared Stats standby writer on a disposable guest and checks it (see docs/lisa-operational-recovery.md).
-#   deploy/orange/recovery/guest/recreate.sh NAME CAPTURE_DIR
-#   deploy/orange/recovery/guest/recreate.sh --destroy NAME
-# CAPTURE_DIR is a sealed capture from capture-standby.sh (depot/ and depot.sha256), copied off-host.
-# Requires GUEST_HOST (SSH alias of the Linux host that runs the guest), BASE_IMAGE (path on that host
-# of an Alpine 3.24 cloud image with IMAGE.sha512 beside it), STUFF_ROOT (a laputa-systems/stuff
-# checkout), RUNTIME_DIR (a runtime build directory holding runtime.tar), APP_DIR (an app release),
-# STATS_CHECK_CREDENTIAL_FILE and STATSCTL. Requires hdiutil, genisoimage or xorriso for the seed.
-#
-# The guest has no outbound network: packages, the Engine image, runtime and app are staged from the
-# host. It is provisioned with provision.sh, then checked for health, the declared app and Engine,
-# and synthetic ingest with readback and duplicate replay; then it reboots and is checked again.
-# The result is written to ~/.local/state/openorange/guests/NAME.json and the guest is destroyed,
-# since it holds a copy of production state. Exit 0 only when every check passed after the reboot.
-# With GUEST_KEEP=1 the guest keeps running after its checks, passed or not, for diagnosis: its SSH access is in
-# ~/.local/state/openorange/guests/NAME.access/ and its QMP socket (drive id "os") in the guest
-# directory on the host; --destroy NAME stops it and removes both.
-#
-# The host writes about 12 GB (Engine image, overlay disk, restored depot, cached capture and
-# runtime) under GUEST_ROOT (default ~/.local/share/stats-guest, owner-only). On a host whose disk
-# also holds the production writer, GUEST_ROOT must be on tmpfs: on 2026-11-22 these writes to
-# Threadripper's disk raised production Stats latency from about 60 ms to 1.4-1.9 s and produced
-# Engine heartbeat and alarm warnings.
 set -eu
 # macOS tar otherwise adds ._* AppleDouble entries for extended attributes, and the Engine refuses
 # to read an object store that contains them.
@@ -60,7 +37,7 @@ base=${BASE_IMAGE:?BASE_IMAGE is required}
 stuff=${STUFF_ROOT:?STUFF_ROOT is required}
 runtime=${RUNTIME_DIR:?RUNTIME_DIR is required}
 app=${APP_DIR:?APP_DIR is required}
-credential=${STATS_CHECK_CREDENTIAL_FILE:?STATS_CHECK_CREDENTIAL_FILE is required}
+hosts=${STATS_CHECK_HOSTS:?STATS_CHECK_HOSTS is required}
 statsctl=${STATSCTL:?STATSCTL is required}
 ssh_port=49291
 remote=$guest_root/$name
@@ -174,13 +151,11 @@ check() {
     ssh -F "$work/ssh_config" -o ExitOnForwardFailure=yes -N -L "$local_port:127.0.0.1:8080" guest & tunnel=$!
     GATEWAY_SECRET=$gateway node "$here/gateway-proxy.mjs" "$proxy_port" "$local_port" >/dev/null & proxy=$!
     sleep 3
-    ingest=false
+    reporting=false
     i=0
-    # The check host is admitted six frames a minute and each attempt sends up to two, so attempts
-    # are 20 s apart: closer retries after one early failure are all refused as rate_limited.
     while [ "$i" -lt 12 ]; do
-        if "$statsctl" check ingest --origin "http://127.0.0.1:$proxy_port" --credential-file "$credential" --json >"$results/$name.ingest-$phase.json" 2>&1; then ingest=true; break; fi
-        cp "$results/$name.ingest-$phase.json" "$results/$name.ingest-$phase.attempt-$i.json"
+        if "$statsctl" check hosts --origin "http://127.0.0.1:$proxy_port" --hosts "$hosts" --max-age 2m --json >"$results/$name.hosts-$phase.json" 2>&1; then reporting=true; break; fi
+        cp "$results/$name.hosts-$phase.json" "$results/$name.hosts-$phase.attempt-$i.json"
         i=$((i + 1)); sleep 20
     done
     kill "$proxy" "$tunnel" 2>/dev/null || :; proxy= tunnel=
@@ -188,7 +163,7 @@ check() {
     app_ok=$(printf '%s' "$identity" | python3 -I -c 'import json, sys; s = json.load(sys.stdin); e = sys.argv[1]; print(str(s["selected"] == e and s["running"] == e and s["collector_running"] == e and s["healthy"]).lower())' "$expected_app")
     engine=$("$stuff/deploy/openorange/bin/standby-engine" inspect --host guest --ssh-config "$work/ssh_config" --json || :)
     engine_ok=$(printf '%s' "$engine" | python3 -I -c 'import json, sys; print(str(json.load(sys.stdin)["ok"]).lower())' 2>/dev/null || echo false)
-    printf '"%s":{"at":"%s","ingest":%s,"app":%s,"engine":%s,"engineDrift":%s}' "$phase" "$(now)" "$ingest" "$app_ok" "$engine_ok" "$(printf '%s' "$engine" | python3 -I -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["drift"]))' 2>/dev/null || echo null)"
+    printf '"%s":{"at":"%s","hosts":%s,"app":%s,"engine":%s,"engineDrift":%s}' "$phase" "$(now)" "$reporting" "$app_ok" "$engine_ok" "$(printf '%s' "$engine" | python3 -I -c 'import json, sys; print(json.dumps(json.load(sys.stdin)["drift"]))' 2>/dev/null || echo null)"
 }
 echo "guest: check"
 first=$(check provisioned)
@@ -211,4 +186,4 @@ if [ "$keep" = 1 ]; then
     kept=1
     echo "kept: ssh -F $access/ssh_config guest; QMP at $host:$remote/qmp.sock; destroy with --destroy $name"
 fi
-python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); sys.exit(0 if all(r[p][k] for p in ("provisioned", "rebooted") for k in ("ingest", "app", "engine")) else 1)' "$result"
+python3 -I -c 'import json, sys; r = json.load(open(sys.argv[1])); sys.exit(0 if all(r[p][k] for p in ("provisioned", "rebooted") for k in ("hosts", "app", "engine")) else 1)' "$result"

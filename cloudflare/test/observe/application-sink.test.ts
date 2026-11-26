@@ -9,7 +9,6 @@ const OPTIONS = { post: () => Promise.resolve(true), now: () => NOW, release: "s
 
 const INGEST: OperationSummary = {
   operation: "host.ingest",
-  synthetic: false,
   rows: { read: 3, written: 5, statements: 4 },
   durationMs: 17,
   work: { received: 10, persisted: 7, duplicate: 2, rejected: { invalid_sample: 1, too_old: 0, conflict: 0 }, inputBytes: 900 }
@@ -17,13 +16,12 @@ const INGEST: OperationSummary = {
 
 const HISTORY: OperationSummary = {
   operation: "host.history",
-  synthetic: false,
   rows: { read: 0, written: 0, statements: 1 },
   workloadClass: "24h:cpu",
   work: { points: 60, cells: 120, outputBytes: 4000, cache: "rebuilt" }
 } as OperationSummary;
 
-const POLL: OperationSummary = { operation: "deployments.poll", synthetic: false, rows: { read: 1, written: 1, statements: 2 } } as OperationSummary;
+const POLL: OperationSummary = { operation: "deployments.poll", rows: { read: 1, written: 1, statements: 2 } } as OperationSummary;
 
 await test("every operation summary becomes an application event that satisfies the ingestion contract", () => {
   for (const summary of [INGEST, HISTORY, POLL]) {
@@ -57,6 +55,9 @@ await test("the sink posts one batch per operation and never throws when ingest 
 
 await test("work fields are logical counts with snake_case names and stay within the contract", () => {
   const event = toApplicationEvent(INGEST, OPTIONS);
+  const withFlag = { ...INGEST, synthetic: { arbitrary: 1 } };
+  const withExtra = { ...INGEST, extra: { arbitrary: 1 } };
+  assert.deepEqual(toApplicationEvent(withFlag, OPTIONS).work, toApplicationEvent(withExtra, OPTIONS).work);
   assert.deepEqual(event.work, {
     sql_rows_read: 3,
     sql_rows_written: 5,

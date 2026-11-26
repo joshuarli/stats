@@ -7,8 +7,6 @@ import { pathToFileURL } from "node:url";
 import { buildApp } from "./app-release.mts";
 
 const HOST = "stats-standby", ROUTE_HOST = "lisa", BOUND_S = 300, DEADLINE_S = 300;
-// The standby's health route answers before ingest does: on 2026-11-22 a restart
-// accepted synthetic ingest about 50 s after it began.
 const READY_S = 120;
 const LIMITS = { observe: 120000, authority: 30000, remote: 30000, build: 600000, test: 900000, stage: 600000, start: 1800000 };
 const EXIT = { promoted: 0, notPromoted: 3, lockHeld: 4, needsOperator: 5 } as const;
@@ -21,7 +19,7 @@ export interface StandbyEffects {
   readonly state: string;
   readonly sshConfig: string;
   readonly rollout: string;
-  readonly credential: string | undefined;
+  readonly hosts: string | undefined;
   readonly statsctl: string | undefined;
   readonly node: string;
   readonly run: (file: string, args: readonly string[], options: RunOptions) => Run;
@@ -101,7 +99,7 @@ export function deployStandby(effects: StandbyEffects): Outcome {
   report(`standby runs ${baseline} on runtime ${runtime}; runtime pins match`);
   if (effects.mode === "check") return "checked";
 
-  const credential = text(effects.credential, "STATS_CHECK_CREDENTIAL_FILE");
+  const hosts = text(effects.hosts, "STATS_CHECK_HOSTS");
   const statsctl = text(effects.statsctl, "STATSCTL");
   if (run("git", ["-C", root, "status", "--porcelain"], { timeoutMs: LIMITS.remote }).stdout.trim() !== "") throw new Error("commit or stash local changes first");
   const commit = run("git", ["-C", root, "rev-parse", "HEAD"], { timeoutMs: LIMITS.remote }).stdout.trim();
@@ -141,7 +139,7 @@ export function deployStandby(effects: StandbyEffects): Outcome {
   writeFileSync(join(record, "receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
   const policy = {
     max_age_s: 3600, ready_s: READY_S, observation_s: 120, check_interval_s: 30,
-    functional_check: { argv: [effects.node, join(record, "tools/functional-check.mjs"), "--target-kind", "native-app", "--ssh-config", sshConfig, "--host", HOST, "--credential-file", credential, "--statsctl", statsctl, "--rollout", rollout], timeout_s: 120 },
+    functional_check: { argv: [effects.node, join(record, "tools/functional-check.mjs"), "--target-kind", "native-app", "--ssh-config", sshConfig, "--host", HOST, "--hosts", hosts, "--statsctl", statsctl, "--rollout", rollout], timeout_s: 120 },
     authority_check: { argv: [effects.node, join(record, "tools/writer-authority.mjs"), "--route-host", ROUTE_HOST], timeout_s: 30 },
   };
   writeFileSync(join(record, "policy.json"), `${JSON.stringify(policy, null, 2)}\n`, { flag: "wx" });
@@ -183,7 +181,7 @@ const MESSAGES: Record<Outcome, string> = {
 function main() {
   const args = process.argv.slice(2);
   if (args[0] === "-h" || args[0] === "--help") {
-    console.log(`usage: node --experimental-strip-types deploy/orange/standby-deploy.mts [--check]\n\nDeploys the committed tree to the native Stats standby writer through Stuff's rollout\ntransaction: build, admission checks, stage an immutable app release, then rollout start\n--target-kind native-app, which holds one lease through activation, verification and\nconditional recovery.\n--check: read the app identity, writer authority and runtime pins; changes nothing.\nEnvironment: STANDBY_SSH_CONFIG and STATS_ROLLOUT; deploying also needs\nSTATS_CHECK_CREDENTIAL_FILE and STATSCTL. Records go to ~/.local/state/openorange/apps\nand journals to ~/.local/state/openorange/rollouts.\nExit codes: 0 promoted, checked or unchanged; 3 rejected or recovered; 4 lease held;\n5 needs operator; 1 error; 2 usage.`);
+    console.log(`usage: node --experimental-strip-types deploy/orange/standby-deploy.mts [--check]\n\nDeploys the committed tree to the native Stats standby writer through Stuff's rollout\ntransaction: build, admission checks, stage an immutable app release, then rollout start\n--target-kind native-app, which holds one lease through activation, verification and\nconditional recovery.\n--check: read the app identity, writer authority and runtime pins; changes nothing.\nEnvironment: STANDBY_SSH_CONFIG and STATS_ROLLOUT; deploying also needs\nSTATS_CHECK_HOSTS and STATSCTL. Records go to ~/.local/state/openorange/apps\nand journals to ~/.local/state/openorange/rollouts.\nExit codes: 0 promoted, checked or unchanged; 3 rejected or recovered; 4 lease held;\n5 needs operator; 1 error; 2 usage.`);
     return;
   }
   if (args.length > 1 || (args.length === 1 && args[0] !== "--check")) { console.error("usage: deploy/orange/standby-deploy.mts [--check]; use --help"); process.exitCode = 2; return; }
@@ -195,7 +193,7 @@ function main() {
   try {
     const outcome = deployStandby({
       mode: args[0] === "--check" ? "check" : "deploy", root, state: join(homedir(), ".local/state/openorange"),
-      sshConfig: required("STANDBY_SSH_CONFIG"), rollout: required("STATS_ROLLOUT"), credential: optional("STATS_CHECK_CREDENTIAL_FILE"), statsctl: optional("STATSCTL"),
+      sshConfig: required("STANDBY_SSH_CONFIG"), rollout: required("STATS_ROLLOUT"), hosts: optional("STATS_CHECK_HOSTS"), statsctl: optional("STATSCTL"),
       node: process.execPath, run: execute, report: message => console.log(message), now: Date.now,
     });
     if (MESSAGES[outcome]) console.log(`standby-deploy: ${MESSAGES[outcome]}`);

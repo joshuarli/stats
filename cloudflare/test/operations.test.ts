@@ -78,7 +78,6 @@ describe("host.ingest", () => {
     const message = only(first.published);
     expect(message.operation).toBe("host.ingest");
     if (message.operation !== "host.ingest") return;
-    expect(message.synthetic).toBe(false);
     expect(message.work.persisted).toBe(ack.accepted);
     expect(message.work.duplicate).toBe(ack.duplicates);
     expect(message.work.received).toBe(ack.accepted + ack.duplicates + ack.rejected.length);
@@ -122,23 +121,14 @@ describe("host.ingest", () => {
     expect(only(malformed.published).operation).toBe("host.ingest");
   });
 
-  it("flags the synthetic check host and no other", async () => {
-    const synthetic = await createHost("synthetic-check");
-    const ordinary = await createHost("synthetic-check-2");
-    expect(only((await ingest(synthetic.token, frameFor("linux-normal", synthetic.hostId))).published).synthetic).toBe(true);
-    expect(only((await ingest(ordinary.token, frameFor("linux-normal", ordinary.hostId))).published).synthetic).toBe(false);
-  });
 });
 
 describe("host listing", () => {
-  it("omits the synthetic check host from the fleet and keeps it for administration", async () => {
-    const synthetic = await createHost("synthetic-check");
-    const ordinary = await createHost("synthetic-check-2");
-    const list = async (path: string) => invoke(async instance => (await instance.fetch(new Request(`https://installation${path}`))).json() as Promise<{ hosts: { hostId: string }[] }>);
-    const fleet = (await list("/hosts")).result.hosts.map(host => host.hostId);
-    expect(fleet).toContain(ordinary.hostId);
-    expect(fleet).not.toContain(synthetic.hostId);
-    expect((await list("/admin/hosts")).result.hosts.map(host => host.hostId)).toContain(synthetic.hostId);
+  it("returns every registered host", async () => {
+    const first = await createHost("fleet-one");
+    const second = await createHost("fleet-two");
+    const result = await invoke(async instance => (await instance.fetch(new Request("https://installation/hosts"))).json() as Promise<{ hosts: { hostId: string }[] }>);
+    expect(result.result.hosts.map(host => host.hostId)).toEqual(expect.arrayContaining([first.hostId, second.hostId]));
   });
 });
 
@@ -154,7 +144,7 @@ describe("history operations", () => {
     const built = await read(path);
     expect(built.result.status).toBe(200);
     const rebuilt = only(built.published);
-    expect(rebuilt).toMatchObject({ operation: "host.history", synthetic: false, workloadClass: "raw:summary" });
+    expect(rebuilt).toMatchObject({ operation: "host.history", workloadClass: "raw:summary" });
     expect(rebuilt.operation === "host.history" && rebuilt.work.cache).toBe("rebuilt");
     expect(rebuilt.operation === "host.history" && rebuilt.work.outputBytes).toBe((await built.result.arrayBuffer()).byteLength);
     expect(rebuilt.operation === "host.history" && rebuilt.work.points).toBeGreaterThan(0);
@@ -167,11 +157,11 @@ describe("history operations", () => {
     expect(hit.rows.written).toBe(0);
   });
 
-  it("separates a bundle from a single kind and marks the synthetic host", async () => {
-    const host = await createHost("synthetic-check");
+  it("separates a bundle from a single kind", async () => {
+    const host = await createHost("bundle");
     await ingest(host.token, frameFor("linux-normal", host.hostId));
     const bundle = only((await read(`/hosts/${host.hostId}/history?range=6h&kinds=summary,disks`)).published);
-    expect(bundle).toMatchObject({ operation: "host.history", synthetic: true, workloadClass: "raw:bundle" });
+    expect(bundle).toMatchObject({ operation: "host.history", workloadClass: "raw:bundle" });
   });
 
   it("records a project history read as rebuilt and its conditional repeat as hit-304", async () => {
@@ -180,7 +170,7 @@ describe("history operations", () => {
     const built = await read(path);
     expect(built.result.status).toBe(200);
     const rebuilt = only(built.published);
-    expect(rebuilt).toMatchObject({ operation: "project.history", synthetic: false, workloadClass: "samples:worker" });
+    expect(rebuilt).toMatchObject({ operation: "project.history", workloadClass: "samples:worker" });
     expect(rebuilt.operation === "project.history" && rebuilt.work.cache).toBe("rebuilt");
     const repeat = await read(path, { "If-None-Match": built.result.headers.get("etag")! });
     expect(repeat.result.status).toBe(304);
@@ -216,7 +206,7 @@ describe("background operations", () => {
       { metric: "worker.invocations", bucketMs: 1_793_509_500_000, value: 6 }
     ];
     const first = only((await invoke(async instance => instance.recordCollectorRun(run({ points })))).published);
-    expect(first).toMatchObject({ operation: "collector.record", synthetic: false, work: { runs: 1, metricRows: 2, hourRollups: 1, upstreamQueries: 3 } });
+    expect(first).toMatchObject({ operation: "collector.record", work: { runs: 1, metricRows: 2, hourRollups: 1, upstreamQueries: 3 } });
     expect(first.rows.written).toBeGreaterThan(0);
     const repeat = only((await invoke(async instance => instance.recordCollectorRun(run({ points })))).published);
     expect(repeat).toMatchObject({ work: { runs: 1, metricRows: 0, hourRollups: 0, upstreamQueries: 3 } });

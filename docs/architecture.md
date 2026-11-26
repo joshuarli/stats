@@ -138,7 +138,7 @@ object has no public route. An unrouted Worker request that carries an
 uncaught exception, a channel error report, or a status of at least 500 is
 not excluded: it is observed as `<METHOD> unmatched`. Each service's
 `operation` channel message is read by that service's decoder: stats' typed
-summaries, or a generic `{operation, synthetic, rows}` message for the
+summaries, or a generic `{operation, rows}` message for the
 others. Each policy also names a sampling mode: `stats` and `usr-memories` keep
 every observed invocation (`{ kind: "all" }`), and the Nanoshop services are
 `sampled` with a keep rate in parts per million and slow-wall and slow-CPU
@@ -211,8 +211,7 @@ only of requests. Each instrumented `stats` invocation publishes one
 `operation` message on the `stats.observe` diagnostics channel instead of the
 bare `invocation` mark (`src/operations.ts`, `src/observe/producer/channel.ts`).
 It names an operation id (`host.ingest`, `host.history`, `project.history`,
-`collector.record`, `cleanup.retention`, `deployments.poll`), whether the host
-was the synthetic check, the invocation's SQLite row account, and the work that
+`collector.record`, `cleanup.retention`, `deployments.poll`), the invocation's SQLite row account, and the work that
 operation did: persisted, duplicate and rejected samples and input bytes for
 ingest; points, cells, output bytes and cache result for history (with a
 `workloadClass` such as `1m:summary`); successful runs, metric rows, hour rollups and
@@ -238,10 +237,10 @@ The `ObservationStore` keeps two additive tables beside its existing ones, both
 in five-minute buckets and bounded to 100,000 rows:
 
 - `observe_operations`, keyed by `(bucket_at, version, operation,
-  workload_class, synthetic)`. Each row holds `count`, `failed`, summed
+  workload_class)`. Each row holds `count`, `failed`, summed
   `cpu_ms_sum`, `wall_ms_sum`, `rows_read`, `rows_written` and `statements`,
   lag counters (`lag_count`, `lag_ms_max`, `lag_ms_sum`), and one integer column
-  per work field. Synthetic rows are kept apart from real ones.
+  per work field.
 - `observe_outcomes`, keyed by `(bucket_at, version, stage, outcome, route)`.
   It counts tail events that produced no stored invocation, by `stage`
   (`worker`, `object`, `unknown`) and by `outcome`: `excluded-status:401|403|404`,
@@ -264,7 +263,7 @@ or one of the four `excluded-*` classes; the operation is the generic operation
 name that stats-style summaries do not carry, empty when an event has none.
 
 A sampled service's operation message (`ServiceOperationSummary`: `operation`,
-`synthetic`, `rows` as `{ read, written, statements }` or `null`, and an
+`rows` as `{ read, written, statements }` or `null`, and an
 optional `workLagMs`, a non-negative integer) is summed into the same element:
 `rowAccounts` counts the invocations whose summary carried a row account,
 `rowsRead`, `rowsWritten` and `statements` sum those accounts, and
@@ -426,8 +425,7 @@ the query filters these rows too. A service that keeps everything has no
 
 `statsctl observe operations --project SERVICE --window 1h --json` reads this
 window for any observed service and totals it by operation. For `stats` the
-payload's `source` is `summaries`: one row per operation, workload class and
-synthetic flag with count, failed, CPU, wall, rows read and written,
+payload's `source` is `summaries`: one row per operation and workload class with count, failed, CPU, wall, rows read and written,
 statements and ingest lag. For a sampled service `source` is `counts`: one row
 per stage, route and operation, where an empty operation takes the name the
 service policy gives the route (`labelOperation`; for Nanoshop

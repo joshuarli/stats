@@ -13,7 +13,6 @@ export interface TestFile {
 const SPECIAL: Readonly<Record<string, readonly [string, readonly string[], boolean?]>> = {
   "test/node/parity.test.ts": ["parity", ["stats", "observe"]],
   "test/node/http-parity.test.ts": ["parity", ["stats", "observe"]],
-  "test/cli/check.test.ts": ["parity", ["stats", "observe"]],
   "test/observe/budget.test.ts": ["observe-runtime", ["observe"]],
   "test/scripts/node-bundle.test.ts": ["node-package", ["node-bundle-in-test"]],
   "test/scripts/build-preparation.test.ts": ["build-orchestration", ["isolated-builds-in-test"]],

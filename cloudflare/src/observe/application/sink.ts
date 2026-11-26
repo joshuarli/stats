@@ -32,10 +32,6 @@ function workFields(summary: OperationSummary): Record<string, number> {
       else if (typeof entry === "object" && entry !== null && !Array.isArray(entry)) visit(entry, key);
     }
   };
-  for (const [key, value] of Object.entries(summary)) {
-    if (key === "rows" || key === "operation" || key === "synthetic" || key === "durationMs" || key === "workloadClass" || key === "work") continue;
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) visit(value, "");
-  }
   if ("work" in summary && summary.work !== undefined) visit(summary.work, "");
   return work;
 }

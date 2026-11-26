@@ -12,7 +12,7 @@ import { OBJECT, T0, VERSION, database, hex } from "./support.ts";
 function item(n: number, overrides: Partial<TailItem> & { url?: string; status?: number; method?: string; service?: string } = {}): TailItem {
   const trace = { traceId: hex(n + 1, 32), spanId: hex(2 * n + 1, 16) };
   const { url = "https://s.example/api/v1/hosts", status = 200, method = "GET", service, ...rest } = overrides;
-  const message = service === undefined ? { kind: "invocation", ...trace } : { kind: "operation", ...trace, operation: service, synthetic: false, rows: null };
+  const message = service === undefined ? { kind: "invocation", ...trace } : { kind: "operation", ...trace, operation: service, rows: null };
   return {
     event: { request: { url, method }, response: { status } }, eventTimestamp: T0 + n * 7_000, exceptions: [], diagnosticsChannelEvents: [{ channel: OBSERVE_CHANNEL, message }],
     scriptVersion: { id: VERSION }, executionModel: "stateless", outcome: "ok", cpuTime: 1 + (n % 4), wallTime: 10 + (n % 50), ...rest

@@ -20,7 +20,7 @@ await test("Node records request operations with linked trace context without ob
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const headers = { "tailscale-user-login": "owner@example.com", traceparent: `00-${"a".repeat(32)}-${"b".repeat(16)}-01` };
   try {
-    const created = await installation.core.createHost("synthetic-check");
+    const created = await installation.core.createHost("ordinary-host");
     assert.ok(created.ok);
     const response = await fetch(`${origin}/api/v1/hosts/${created.value.hostId}/history?range=24h&kind=summary`, { headers });
     assert.equal(response.status, 200);
@@ -35,9 +35,16 @@ await test("Node records request operations with linked trace context without ob
     assert.equal(operation.trace.traceId, "a".repeat(32));
     assert.equal(invocation.trace.traceId, operation.trace.traceId);
     assert.notEqual(invocation.trace.spanId, operation.trace.spanId);
-    assert.equal(operation.work["synthetic"], 1);
     assert.equal(operation.release, "release-123");
     assert.equal(operation.work["sql_rows_read"], undefined);
+    await installation.application!.capture(new Request("https://stats/api/v1/hosts"), async () => {
+      installation.application!.operations.operation({ operation: "deployments.poll", rows: { read: 0, written: 0, statements: 0 }, synthetic: { arbitrary: 1 }, extra: { arbitrary: 1 } } as import("../../src/observe/producer/channel.ts").OperationSummary);
+      return new Response("ok");
+    });
+    await installation.application!.flush();
+    const extraOperation = (await installation.observe.forService("stats").external("stats", {})).map(row => row.event).find(event => event.operation === "deployments.poll");
+    assert.ok(extraOperation);
+    assert.deepEqual(extraOperation.work, { sql_rows_written: 0, sql_statements: 0 });
     const invalidTrace = await fetch(`${origin}/api/v1/hosts/${created.value.hostId}/history?range=24h&kind=summary`, { headers: { ...headers, traceparent: `00-${"0".repeat(32)}-${"b".repeat(16)}-01` } });
     await invalidTrace.arrayBuffer();
     await installation.application!.flush();

@@ -28,7 +28,7 @@ replay. Keep the archive owner-only.
 
 To capture another point while this standby is authoritative, run
 `deploy/orange/recovery/capture-standby.sh NAME` from the workstation with
-`STANDBY_SSH_CONFIG`, `STATS_ROLLOUT`, `STATS_CHECK_CREDENTIAL_FILE` and
+`STANDBY_SSH_CONFIG`, `STATS_ROLLOUT`, `STATS_CHECK_HOSTS` and
 `STATSCTL` set. It runs `capture-engine.sh` on the guest under the shared
 rollout lease (operation `engine-capture`, 900 s bound), so a capture cannot
 overlap a rollout or another leased mutation. The guest script records which
@@ -44,7 +44,7 @@ depot, `depot.sha256`, the image identity, `engine.json` and timestamps.
 After any failure or interruption the driver runs `capture-engine.sh recover`
 under a new lease (`engine-capture-recover`), which restores the recorded
 intent; a capture refuses to start while an intent is left over. The driver
-then requires the functional check (synthetic ingest with readback) within
+then requires the functional check (fresh receipts from every expected host) within
 120 s and writes `~/.local/state/openorange/captures/NAME.json`, whose
 `outcome` is `captured` only when the copy completed, the services are back
 and the check passed. Exit codes: 0 captured, 1 failed, 4 lease held with
@@ -727,8 +727,8 @@ absolute data paths resolve to the copy. Use the isolated test gateway.
 Poll `statsctl backup status --object observe:stuff --json` to confirm
 `importing` and recover the offsets. In the same Engine session, run
 `statsctl backup import --in ARCHIVE --object observe:stuff`. Confirm
-all objects report `open`, check the restored receipts and run an ingest
-canary before and after a cold restart. For a fresh all-object trial use
+all objects report `open`, then wait for every expected real host to report with
+`statsctl check hosts --hosts HOSTS --max-age 2m` before and after a cold restart. For a fresh all-object trial use
 `statsctl backup import --in ARCHIVE --serial`.
 
 ### Verify the full archive from an empty depot

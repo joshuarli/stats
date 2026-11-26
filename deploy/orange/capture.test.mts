@@ -125,9 +125,9 @@ case "$1" in
   lease) case "$*" in *"--operation engine-capture "*) exit ${captureStatus} ;; esac ;;
 esac`);
   fake('ssh', `echo "ssh $*" >>'${calls}'; case "$*" in *sha256sum*) echo "abc123  /x" ;; *) cat >/dev/null ;; esac`);
-  fake('statsctl', `echo '{"payload":{"ok":true}}'`);
+  fake('statsctl', `echo '{"payload":{"hosts":[{"name":"lisa","state":"reporting"}]}}'`);
   writeFileSync(join(dir, 'ssh_config'), '');
-  const result = spawnSync('sh', ['deploy/orange/recovery/capture-standby.sh', 'one'], { encoding: 'utf8', env: { ...process.env, HOME: dir, PATH: `${bin}:${process.env.PATH}`, STANDBY_SSH_CONFIG: join(dir, 'ssh_config'), STATS_ROLLOUT: join(bin, 'rollout'), STATS_CHECK_CREDENTIAL_FILE: join(dir, 'credential'), STATSCTL: join(bin, 'statsctl') } });
+  const result = spawnSync('sh', ['deploy/orange/recovery/capture-standby.sh', 'one'], { encoding: 'utf8', env: { ...process.env, HOME: dir, PATH: `${bin}:${process.env.PATH}`, STANDBY_SSH_CONFIG: join(dir, 'ssh_config'), STATS_ROLLOUT: join(bin, 'rollout'), STATS_CHECK_HOSTS: 'lisa', STATSCTL: join(bin, 'statsctl') } });
   const receipt = join(dir, '.local/state/openorange/captures/one.json');
   return { dir, result, calls: readFileSync(calls, 'utf8'), receipt: existsSync(receipt) ? JSON.parse(readFileSync(receipt, 'utf8')) : undefined };
 }

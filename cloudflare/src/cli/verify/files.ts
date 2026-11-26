@@ -59,21 +59,30 @@ export function readSafetyFile(file: string, origin: string): SafetyRecord {
     parsed = JSON.parse(readCapped(file, MAX_SAFETY_BYTES, "safety check file"));
   } catch (error) {
     if (error instanceof CommandError) throw error;
-    throw usageError(`${name} is not valid JSON; save the output of \`statsctl check ingest --json\``);
+    throw usageError(`${name} is not valid JSON; save the output of \`statsctl check hosts --hosts HOSTS --max-age 2m --json\``);
   }
   const bad = (why: string) => new CommandError(EXIT.usage, "safety_check_invalid", `${name}: ${why}`);
-  if (typeof parsed !== "object" || parsed === null) throw bad("expected the JSON document printed by `statsctl check ingest --json`");
+  if (typeof parsed !== "object" || parsed === null) throw bad("expected the JSON document printed by `statsctl check hosts --hosts HOSTS --max-age 2m --json`");
   const document = parsed as Record<string, unknown>;
-  if (document["schema"] !== "statsctl/1" || document["command"] !== "check ingest") throw bad("not a statsctl/1 `check ingest` document");
+  if (document["schema"] !== "statsctl/1" || document["command"] !== "check hosts") throw bad("not a statsctl/1 `check hosts` document");
   if (document["origin"] !== origin) throw bad(`the check ran against ${String(document["origin"])}, not ${origin}`);
   const payload = document["payload"];
   if (typeof payload !== "object" || payload === null) throw bad("the check did not run to a result; it holds an error, not a payload");
   const fields = payload as Record<string, unknown>;
-  const steps = fields["steps"];
-  if (typeof fields["ok"] !== "boolean" || typeof fields["hostId"] !== "string" || !Number.isSafeInteger(fields["atMs"]) || !Array.isArray(steps)) throw bad("the payload lacks ok, hostId, atMs, and steps");
-  const failed = steps.find((step): step is { name: string } => typeof step === "object" && step !== null && (step as { ok?: unknown }).ok === false && typeof (step as { name?: unknown }).name === "string");
-  if (fields["ok"] === true && failed !== undefined) throw bad("ok is true but a step failed");
-  return { ok: fields["ok"], atMs: fields["atMs"] as number, hostId: fields["hostId"], origin, failedStep: failed?.name ?? null, file: name };
+  if (!Number.isSafeInteger(fields["maxAgeMs"]) || (fields["maxAgeMs"] as number) <= 0 || (fields["maxAgeMs"] as number) > 120_000 || !Array.isArray(fields["hosts"]) || fields["hosts"].length === 0) throw bad("expected hosts checked with a maximum age of 2m");
+  const hosts = fields["hosts"] as unknown[];
+  const checked = hosts.map(item => {
+    if (typeof item !== "object" || item === null) throw bad("invalid host result");
+    const host = item as Record<string, unknown>;
+    if (typeof host["name"] !== "string" || host["name"] === "" || !["reporting", "missing", "ambiguous", "revoked", "stale"].includes(String(host["state"]))) throw bad("invalid host identity or state");
+    const received = host["lastReceivedAtMs"];
+    if (received !== null && (!Number.isSafeInteger(received) || (received as number) < 0)) throw bad("invalid host receipt time");
+    if (host["state"] === "reporting" && received === null) throw bad("reporting host lacks receipt time");
+    return { name: host["name"], state: host["state"], received: received as number | null };
+  });
+  if (new Set(checked.map(host => host.name)).size !== checked.length) throw bad("duplicate host names");
+  const failed = checked.find(host => host.state !== "reporting");
+  return { ok: failed === undefined, atMs: Math.min(...checked.map(host => host.received ?? 0)), hosts: checked.map(host => host.name).join(","), origin, failedHost: failed?.name ?? null, file: name };
 }
 
 export function parseDuration(value: string): number {

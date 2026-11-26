@@ -26,7 +26,7 @@ function hex(bytes: number): string {
 }
 
 function publish(operation: string, rows: Rows | null, r2?: R2Ops): void {
-  channel.publish({ kind: "operation", traceId: hex(16), spanId: hex(8), operation, synthetic: false, rows, ...(r2 === undefined ? {} : { r2 }) });
+  channel.publish({ kind: "operation", traceId: hex(16), spanId: hex(8), operation, rows, ...(r2 === undefined ? {} : { r2 }) });
 }
 
 function count(value: string | null, fallback: number): number {

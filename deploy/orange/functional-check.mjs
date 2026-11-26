@@ -7,7 +7,7 @@ const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i
 const rollout = options.rollout ?? process.env.STATS_ROLLOUT;
 const config = options['ssh-config'] ?? process.env.STANDBY_SSH_CONFIG;
 const host = options.host ?? process.env.STATS_ROLLOUT_HOST;
-const credential = options['credential-file'] ?? process.env.STATS_CHECK_CREDENTIAL_FILE;
+const hosts = options.hosts ?? process.env.STATS_CHECK_HOSTS;
 const statsctl = options.statsctl ?? process.env.STATSCTL;
 const targetKind = options['target-kind'];
 const release = process.env.ROLLOUT_RELEASE;
@@ -33,13 +33,13 @@ function observe(name) {
 }
 let ok = false;
 try {
-  if (![rollout, config, host, credential, statsctl, release, digest].every(value => typeof value === 'string' && value.length)) throw new Error('missing required input');
+  if (![rollout, config, host, hosts, statsctl, release, digest].every(value => typeof value === 'string' && value.length)) throw new Error('missing required input');
   if (targetKind !== 'native' && targetKind !== 'native-app') throw new Error('target kind must be native or native-app');
   const before = observe('observe-before');
   checks.identity = true;
-  const result = run('ingest', statsctl, ['check', 'ingest', '--credential-file', credential, '--json']);
-  if (result.payload?.ok !== true) throw new Error('ingest readback failed');
-  checks.ingest = true;
+  const result = run('hosts', statsctl, ['check', 'hosts', '--hosts', hosts, '--max-age', '2m', '--json']);
+  if (!Array.isArray(result.payload?.hosts) || result.payload.hosts.length === 0 || result.payload.hosts.some(host => host.state !== 'reporting')) throw new Error('host freshness failed');
+  checks.hosts = true;
   const after = observe('observe-after');
   if (before.pid !== after.pid || before.started_at !== after.started_at) throw new Error('process changed during check');
   checks.stable = true;

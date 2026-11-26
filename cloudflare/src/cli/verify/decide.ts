@@ -16,9 +16,9 @@ export const PROBE_FAILURE_RISE_POINTS = 1;
 export interface SafetyRecord {
   readonly ok: boolean;
   readonly atMs: number;
-  readonly hostId: string;
+  readonly hosts: string;
   readonly origin: string;
-  readonly failedStep: string | null;
+  readonly failedHost: string | null;
   readonly file: string;
 }
 
@@ -123,8 +123,8 @@ function fromComparison(result: GuardrailResult | undefined, id: GuardrailId, mi
 
 function safetyGuardrail(safety: SafetyRecord | null, comparison: DeploymentComparison, deployedAtMs: number): GuardrailReport {
   const id = "safety-check";
-  if (safety === null) return { id, status: "insufficient-data", detail: "no safety check is recorded; run `statsctl check ingest` inside the deployment warm-up and pass --safety-check-file", before: null, after: null };
-  if (!safety.ok) return { id, status: "regressed", detail: `check ingest failed at step ${safety.failedStep ?? "unknown"}`, before: null, after: null };
+  if (safety === null) return { id, status: "insufficient-data", detail: "no safety check is recorded; run `statsctl check hosts` inside the deployment warm-up and pass --safety-check-file", before: null, after: null };
+  if (!safety.ok) return { id, status: "regressed", detail: `check hosts failed for ${safety.failedHost ?? "unknown host"}`, before: null, after: null };
   if (safety.atMs < deployedAtMs) return { id, status: "insufficient-data", detail: "the safety check ran before the deployment, so it did not exercise the candidate", before: null, after: null };
   const inside = safety.atMs >= comparison.after.fromMs;
   return { id, status: "pass", detail: inside ? "passed, but ran inside the after window rather than the warm-up interval" : "passed inside the deployment warm-up interval", before: null, after: null };

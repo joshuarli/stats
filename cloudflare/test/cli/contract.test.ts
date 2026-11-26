@@ -32,7 +32,7 @@ await describe("contract", { concurrency: true }, () => {
     const cases: string[][] = [
       ["projects", "--bogus"], ["projects", "extra"], ["health"], ["health", "--project", "Bad Id"], ["nosuch"], ["observe"], ["--json"],
       ["cost", "--project", "stats", "--all"], ["cost", "--from", "1"], ["cost", "--window", "1h", "--month-to-date"], ["snapshot", "--project", "stats"],
-      ["compare", "--project", "stats"], ["check", "ingest"], ["projects", "--origin", "http://example.com"], ["projects", "--origin", "not a url"]
+      ["compare", "--project", "stats"], ["check", "hosts"], ["projects", "--origin", "http://example.com"], ["projects", "--origin", "not a url"]
     ];
     await Promise.all(cases.map(async args => {
       const run = await runCli(args, {});

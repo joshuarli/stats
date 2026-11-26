@@ -70,19 +70,6 @@ def analyze(records, faults, definition, definition_sha):
         missing.append(f"{len(unavailable)} steady samples with unavailable groups")
     result = {"samples": len(samples), "steadySamples": len(steady), "identity": start.get("identity"), "coverageGaps": start.get("gaps")}
 
-    # Durability: the ledger readback (written by the fault runner at the end) must find every
-    # acknowledged synthetic write.
-    ledger = [f for f in faults if f.get("kind") == "ledger"]
-    acknowledged = sorted({int(s["check"]["seq"]) for s in samples if s.get("check", {}).get("ok")} | {int(f["seq"]) for f in faults if f.get("kind") == "recovery-check" and f.get("ok")})
-    if len(ledger) != 1:
-        missing.append("no final ledger readback")
-    else:
-        lost = sorted(set(acknowledged) - set(int(x) for x in ledger[0]["found"]))
-        result["durability"] = {"acknowledged": len(acknowledged), "lost": lost[:20], "lostCount": len(lost)}
-        if lost:
-            failed.append("lost acknowledged writes")
-
-    # Availability and latency of the ordinary-ingress synthetic check.
     checks = [s for s in samples if "check" in s]
     steady_checks = [s for s in checks if in_fault(s["atMs"]) is None]
     ok = [s for s in steady_checks if s["check"].get("ok")]

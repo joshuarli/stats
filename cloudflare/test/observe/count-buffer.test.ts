@@ -19,7 +19,7 @@ const INTERVAL = 60_000;
 function item(n: number, atMs: number, status = 200): TailItem {
   return {
     event: { request: { url: "https://shop.example/search", method: "GET" }, response: { status } }, eventTimestamp: atMs, exceptions: [],
-    diagnosticsChannelEvents: [{ channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId: hex(n + 1, 32), spanId: hex(2 * n + 1, 16), operation: "request.search", synthetic: false, rows: null } }],
+    diagnosticsChannelEvents: [{ channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId: hex(n + 1, 32), spanId: hex(2 * n + 1, 16), operation: "request.search", rows: null } }],
     scriptVersion: { id: VERSION }, scriptName: "nanoshop-storied", executionModel: "stateless", outcome: "ok", cpuTime: 1, wallTime: 5
   };
 }

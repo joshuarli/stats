@@ -92,7 +92,7 @@ export function readinessSignals(policy: Policy, inputs: ReadinessInputs): Readi
     const span = `[${timeText(window.value.fromMs)}, ${timeText(window.value.toMs)})`;
     signals.push(window.value.invocations.length > 0 ? available("observe-invocations", `${window.value.invocations.length} invocation rows in ${span}`) : unavailable("observe-invocations", "no_invocation_rows", `no observed invocations in ${span}, so coverage cannot be computed`));
     if (isOperationPolicy(policy)) {
-      const rows = window.value.operations.filter(row => row.operation === policy.operation && !row.synthetic && (policy.workloadClass === null || row.workloadClass === policy.workloadClass));
+      const rows = window.value.operations.filter(row => row.operation === policy.operation && (policy.workloadClass === null || row.workloadClass === policy.workloadClass));
       const scope = policy.workloadClass === null ? policy.operation : `${policy.operation} class ${policy.workloadClass}`;
       signals.push(rows.length > 0 ? available("operation-summaries", `${rows.length} organic summary rows for ${scope} in ${span}`) : unavailable("operation-summaries", "no_operation_summaries", `operation summaries absent for ${scope} in ${span}`));
     }
@@ -105,8 +105,8 @@ export function readinessSignals(policy: Policy, inputs: ReadinessInputs): Readi
 
   if (inputs.safety !== undefined) {
     signals.push(inputs.safety === null
-      ? unavailable("safety-check", "safety_check_missing", "no `check ingest` result is recorded; run it inside the warm-up and pass --safety-check-file")
-      : inputs.safety.ok ? available("safety-check", `check ingest passed at ${timeText(inputs.safety.atMs)}`) : unavailable("safety-check", "safety_check_failed", `check ingest failed at step ${inputs.safety.failedStep ?? "unknown"}`));
+      ? unavailable("safety-check", "safety_check_missing", "no `check hosts` result is recorded; run it inside the warm-up and pass --safety-check-file")
+      : inputs.safety.ok ? available("safety-check", `check hosts passed at ${timeText(inputs.safety.atMs)}`) : unavailable("safety-check", "safety_check_failed", `check hosts failed for ${inputs.safety.failedHost ?? "unknown host"}`));
   }
   return signals;
 }

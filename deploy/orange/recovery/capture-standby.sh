@@ -1,17 +1,9 @@
 #!/bin/sh
-# Captures the standby Engine depot under the shared rollout lease (see docs/lisa-operational-recovery.md).
-#   deploy/orange/recovery/capture-standby.sh NAME
-# Requires STANDBY_SSH_CONFIG, STATS_ROLLOUT, STATS_CHECK_CREDENTIAL_FILE and STATSCTL.
-# Writes ~/.local/state/openorange/captures/NAME.json. The capture succeeds only when the guest
-# copy completed, every service it stopped is running again and the app passes the functional
-# check (synthetic ingest with readback) within READY_S. A failed or interrupted capture is
-# recovered under a new lease and recorded as failed. Exit codes: 0 captured, 1 failed, 2 usage,
-# 4 lease held (nothing changed).
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
 config=${STANDBY_SSH_CONFIG:?STANDBY_SSH_CONFIG is required}
 rollout=${STATS_ROLLOUT:?STATS_ROLLOUT is required}
-credential=${STATS_CHECK_CREDENTIAL_FILE:?STATS_CHECK_CREDENTIAL_FILE is required}
+hosts=${STATS_CHECK_HOSTS:?STATS_CHECK_HOSTS is required}
 statsctl=${STATSCTL:?STATSCTL is required}
 [ "$#" -eq 1 ] || { echo "usage: deploy/orange/recovery/capture-standby.sh NAME" >&2; exit 2; }
 name=$1
@@ -60,7 +52,7 @@ deadline=$(($(date +%s) + ready_s))
 begin=$(date +%s)
 while :; do
     if ROLLOUT_RELEASE=$release ROLLOUT_DIGEST=$digest node "$root/deploy/orange/functional-check.mjs" --target-kind native-app \
-        --rollout "$rollout" --ssh-config "$config" --host "$host" --credential-file "$credential" --statsctl "$statsctl" >/dev/null 2>&1; then
+        --rollout "$rollout" --ssh-config "$config" --host "$host" --hosts "$hosts" --statsctl "$statsctl" >/dev/null 2>&1; then
         functional=true; ready_after=$(($(date +%s) - begin)); break
     fi
     [ "$(date +%s)" -lt "$deadline" ] || break

@@ -1,16 +1,4 @@
-"""Runs a soak's scheduled private faults against the native Stats standby, then reads back its ledger.
-
-  python3 bench/standby-soak-faults.py --definition DEF.json --output FAULTS.jsonl --started-at-ms MS \
-      --ssh-config FILE --rollout PATH --statsctl PATH --credential-file FILE --node PATH --repo DIR
-
-Runs on Threadripper's host beside bench/standby-soak.py. Each fault in the definition starts at
-its offset from --started-at-ms (the sampler's start), runs under the shared rollout lease when it
-touches the guest, and is followed by synthetic ingest checks 30 s apart until one passes or
-recoveryLimitS elapses: the check host is admitted six frames a minute, each check sends up to two,
-and the sampler's own check shares the host. Every check's sequence is recorded
-so the final ledger readback can prove acknowledged writes survived. Host faults run in their own
-cgroups under doas, never inside the production VM's cgroup. One fsynced JSON line per event.
-"""
+"""Run scheduled private standby faults and check real host freshness after each fault."""
 import argparse
 import json
 import os
@@ -21,13 +9,12 @@ import threading
 import time
 
 parser = argparse.ArgumentParser()
-for name in ("definition", "output", "ssh-config", "rollout", "statsctl", "credential-file", "node", "repo"):
+for name in ("definition", "output", "ssh-config", "rollout", "statsctl", "hosts"):
     parser.add_argument("--" + name, required=True)
 parser.add_argument("--started-at-ms", type=int, required=True)
 parser.add_argument("--origin", default="https://stats.17166969.xyz")
 args = parser.parse_args()
 definition = json.loads(Path(args.definition).read_text())
-credential = json.loads(Path(args.credential_file).read_text())
 stop = threading.Event()
 for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
     signal.signal(number, lambda *_: stop.set())
@@ -105,12 +92,12 @@ def run_fault(fault):
 
 
 def check():
-    result = subprocess.run([args.statsctl, "check", "ingest", "--origin", args.origin, "--credential-file", args.credential_file, "--json"], capture_output=True, text=True, timeout=60)
+    result = subprocess.run([args.statsctl, "check", "hosts", "--origin", args.origin, "--hosts", args.hosts, "--max-age", "2m", "--json"], capture_output=True, text=True, timeout=60)
     try:
-        payload = json.loads(result.stdout)["payload"]
-        return payload["ok"], payload.get("seq"), [s["name"] for s in payload["steps"] if not s["ok"]]
-    except (ValueError, KeyError):
-        return False, None, ["unreadable"]
+        hosts = json.loads(result.stdout)["payload"]["hosts"]
+        return result.returncode == 0 and bool(hosts) and all(host["state"] == "reporting" for host in hosts), [host["name"] for host in hosts if host["state"] != "reporting"]
+    except (ValueError, KeyError, TypeError):
+        return False, ["unreadable"]
 
 
 with open(args.output, "x", encoding="utf-8") as output:
@@ -132,18 +119,12 @@ with open(args.output, "x", encoding="utf-8") as output:
         record["endedAtMs"] = now_ms()
         recovered = None
         while not stop.is_set() and now_ms() - record["endedAtMs"] <= definition["recoveryLimitS"] * 1000:
-            ok, seq, failed = check()
-            emit({"kind": "recovery-check", "fault": fault["name"], "atMs": now_ms(), "ok": ok, "seq": seq, "failed": failed})
+            ok, failed = check()
+            emit({"kind": "recovery-check", "fault": fault["name"], "atMs": now_ms(), "ok": ok, "failed": failed})
             if ok:
                 recovered = round((now_ms() - record["endedAtMs"]) / 1000, 1)
                 break
             stop.wait(30)
         record["recoveredAfterS"] = recovered
         emit(record)
-    due = args.started_at_ms + int(definition["durationHours"] * 3_600_000) + 300_000
-    if not stop.wait(max(0, (due - now_ms()) / 1000)):
-        ledger = subprocess.run([args.node, "--experimental-strip-types", f"{args.repo}/bench/standby-soak-ledger.mts", "--origin", args.origin,
-                                 "--host-id", credential["hostId"], "--from", str(args.started_at_ms - 60_000), "--to", str(now_ms())],
-                                capture_output=True, text=True, timeout=600)
-        emit(json.loads(ledger.stdout) if ledger.returncode == 0 else {"kind": "ledger-failed", "exit": ledger.returncode, "stderr": ledger.stderr[-500:]})
     emit({"kind": "end", "atMs": now_ms(), "interrupted": stop.is_set()})

@@ -389,7 +389,7 @@ function operationWindowRow(value: unknown): OperationWindowRow {
   const count = (key: string) => integer(fields[key], key);
   return {
     bucketAt: count("bucketAt"), version: text(fields["version"], "version", 36), operation: oneOf(fields["operation"], OPERATION_IDS, "operation"),
-    workloadClass: text(fields["workloadClass"], "workload class", 128), synthetic: bool(fields["synthetic"], "synthetic"),
+    workloadClass: text(fields["workloadClass"], "workload class", 128),
     count: count("count"), failed: count("failed"), cpuMsSum: count("cpuMsSum"), wallMsSum: count("wallMsSum"),
     rowsRead: count("rowsRead"), rowsWritten: count("rowsWritten"), statements: count("statements"),
     lagCount: count("lagCount"), lagMsMax: count("lagMsMax"), lagMsSum: count("lagMsSum"),

@@ -42,7 +42,7 @@ function opRows(side: "before" | "after", version: string, over: Partial<Omit<Op
   const rows: OperationWindowRow[] = [];
   for (let at = bounds[side].fromMs; at < bounds[side].toMs; at += B) {
     rows.push({
-      bucketAt: at, version, operation, workloadClass, synthetic: false, count: 20, failed: 0, cpuMsSum: 200, wallMsSum: 400, rowsRead: 40, rowsWritten: 100, statements: 80,
+      bucketAt: at, version, operation, workloadClass, count: 20, failed: 0, cpuMsSum: 200, wallMsSum: 400, rowsRead: 40, rowsWritten: 100, statements: 80,
       lagCount: 20, lagMsMax: 100, lagMsSum: 1000, work: { ...ZERO_WORK, received: 200, persisted: 200, ...work }, ...rest
     });
   }
@@ -147,8 +147,6 @@ await test("fewer than 100 operations on a side, a foreign version, or no work u
   assert.deepEqual(rollback.blockedBy, ["version-mismatch"]);
   const idle = compareOperation(ingestInput(comparison, opRows("before", id(101)), opRows("after", id(102), { work: { persisted: 0 } })));
   assert.ok(idle.metrics.every(metric => metric.verdict === "insufficient-data"));
-  const synthetic = compareOperation(ingestInput(comparison, opRows("before", id(101)), [...opRows("after", id(102)), ...opRows("after", id(103), { synthetic: true, cpuMsSum: 1e6 })]));
-  assert.deepEqual(synthetic.blockedBy, []);
 });
 
 await test("the failed-share guardrail keeps a clean baseline clean and otherwise allows one point", () => {

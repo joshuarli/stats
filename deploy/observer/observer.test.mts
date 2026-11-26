@@ -62,7 +62,7 @@ test('named checks parse strictly and report reachability', async () => {
 test('the installer passes optional named checks through and rejects other extras', () => {
   const dir = mkdtempSync(resolve('.work/tmp/observer-'));
   try {
-    const fixed = [process.execPath, '/opt/o/observer.mjs', '/var/lib/o', '/vm', '/opt/o/statsctl', 'lisa', 'https://stats.test/health', '/etc/o/c.json', '60'];
+    const fixed = [process.execPath, '/opt/o/observer.mjs', '/var/lib/o', '/vm', '/opt/o/statsctl', 'lisa', 'https://stats.test/health', '60'];
     const run = (output: string, extra: string[]) => spawnSync('sh', ['deploy/observer/install.sh', 'openrc', 'deploy/observer/openrc.template', output, ...fixed, ...extra], { encoding: 'utf8' });
     const ok = run(resolve(dir, 'ok'), ['--http', 'forge=https://forge.test/health', '--tcp', 'forge-ssh=10.0.0.1:12222']);
     assert.equal(ok.status, 0, ok.stderr);

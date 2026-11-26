@@ -11,7 +11,6 @@ function publish(operation, rows, r2) {
 		traceId: hex(16),
 		spanId: hex(8),
 		operation,
-		synthetic: false,
 		rows,
 		...r2 === void 0 ? {} : { r2 }
 	});

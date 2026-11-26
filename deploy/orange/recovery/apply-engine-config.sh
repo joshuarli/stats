@@ -1,19 +1,9 @@
 #!/bin/sh
-# Applies the standby Engine configuration declared in Stuff under the shared rollout lease
-# (see docs/lisa-operational-recovery.md).
-#   deploy/orange/recovery/apply-engine-config.sh NAME
-# Requires STANDBY_SSH_CONFIG, STATS_ROLLOUT, STATS_CHECK_CREDENTIAL_FILE, STATSCTL and STUFF_ROOT
-# (its deploy/openorange/standby/stats-engine.json is the declaration). Writes
-# ~/.local/state/openorange/engine-config/NAME.json. The change succeeds only when the Engine
-# resolved the declared capacities, every service it stopped is running again, the declared
-# Engine shows no drift and the app passes the functional check (synthetic ingest with readback)
-# within READY_S. A failed or interrupted change is recovered under a new lease and recorded as
-# failed. Exit codes: 0 applied, 1 failed, 2 usage, 4 lease held (nothing changed).
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
 config=${STANDBY_SSH_CONFIG:?STANDBY_SSH_CONFIG is required}
 rollout=${STATS_ROLLOUT:?STATS_ROLLOUT is required}
-credential=${STATS_CHECK_CREDENTIAL_FILE:?STATS_CHECK_CREDENTIAL_FILE is required}
+hosts=${STATS_CHECK_HOSTS:?STATS_CHECK_HOSTS is required}
 statsctl=${STATSCTL:?STATSCTL is required}
 stuff=${STUFF_ROOT:?STUFF_ROOT is required}
 [ "$#" -eq 1 ] || { echo "usage: deploy/orange/recovery/apply-engine-config.sh NAME" >&2; exit 2; }
@@ -71,7 +61,7 @@ deadline=$(($(date +%s) + ready_s))
 begin=$(date +%s)
 while :; do
     if ROLLOUT_RELEASE=$release ROLLOUT_DIGEST=$digest node "$root/deploy/orange/functional-check.mjs" --target-kind native-app \
-        --rollout "$rollout" --ssh-config "$config" --host "$host" --credential-file "$credential" --statsctl "$statsctl" >/dev/null 2>&1; then
+        --rollout "$rollout" --ssh-config "$config" --host "$host" --hosts "$hosts" --statsctl "$statsctl" >/dev/null 2>&1; then
         functional=true; ready_after=$(($(date +%s) - begin)); break
     fi
     [ "$(date +%s)" -lt "$deadline" ] || break

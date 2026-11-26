@@ -58,7 +58,7 @@ function opRows(side: "before" | "after", version: string, over: RowOver): Opera
   const rows: OperationWindowRow[] = [];
   for (let at = bounds[side].fromMs; at < bounds[side].toMs; at += BUCKET) {
     rows.push({
-      bucketAt: at, version, operation: "host.ingest", workloadClass: "", synthetic: false, count: 20, failed: 0, cpuMsSum: 200, wallMsSum: 400, rowsRead: 40, rowsWritten: 100, statements: 80,
+      bucketAt: at, version, operation: "host.ingest", workloadClass: "", count: 20, failed: 0, cpuMsSum: 200, wallMsSum: 400, rowsRead: 40, rowsWritten: 100, statements: 80,
       lagCount: 20, lagMsMax: 100, lagMsSum: 1000, work: { ...ZERO_WORK, received: 200, persisted: 200, ...work }, ...rest
     });
   }
@@ -128,7 +128,7 @@ export const POLICY = {
   minChangePercent: 10, floor: 0.5, guardrails: ["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"], window: "1h", maxWaitMs: 48 * H
 };
 
-export const GOOD_SAFETY: SafetyRecord = { ok: true, atMs: AT + 60_000, hostId: "h_0", origin: "http://x", failedStep: null, file: "check.json" };
+export const GOOD_SAFETY: SafetyRecord = { ok: true, atMs: AT + 60_000, hosts: "lisa", origin: "http://x", failedHost: null, file: "check.json" };
 
 export interface Harness {
   readonly origin: FakeOrigin;
@@ -154,7 +154,7 @@ export async function harness(world: World, policy: Record<string, unknown> = PO
     safetyFile(record, document = origin.origin) {
       const file = join(directory, `check-${files += 1}.json`);
       const merged = { ...GOOD_SAFETY, ...record };
-      writeFileSync(file, JSON.stringify({ schema: "statsctl/1", command: "check ingest", origin: document, payload: { ok: merged.ok, hostId: merged.hostId, seq: "1", atMs: merged.atMs, steps: [{ name: "encode", ok: true }, ...(merged.ok ? [] : [{ name: merged.failedStep ?? "replay", ok: false }])] } }));
+      writeFileSync(file, JSON.stringify({ schema: "statsctl/1", command: "check hosts", origin: document, payload: { maxAgeMs: 120_000, hosts: [{ name: merged.hosts, state: merged.ok ? "reporting" : "stale", lastReceivedAtMs: merged.atMs }] } }));
       return file;
     },
     run(options, extra = {}) {

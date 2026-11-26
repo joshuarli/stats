@@ -63,7 +63,7 @@ function command(file, args) {
     child.stdout.on('data', chunk => { if (output.length < 65536) output += chunk; });
     const timer = setTimeout(() => child.kill('SIGKILL'), 60000);
     child.on('error', () => { clearTimeout(timer); resolveResult({ ok: false }); });
-    child.on('close', code => { clearTimeout(timer); let value; try { value = JSON.parse(output); } catch {} const payload = value?.payload; const valid = args[1] === 'ingest' ? payload?.ok === true : Array.isArray(payload?.hosts); resolveResult({ ok: code === 0 && valid, result: value }); });
+    child.on('close', code => { clearTimeout(timer); let value; try { value = JSON.parse(output); } catch {} const payload = value?.payload; const valid = Array.isArray(payload?.hosts); resolveResult({ ok: code === 0 && valid, result: value }); });
   });
 }
 export function stateOutsideCandidate(state, candidate) {
@@ -76,7 +76,7 @@ export function stateOutsideCandidate(state, candidate) {
   if (statePath === candidatePath || statePath.startsWith(candidatePath + sep)) throw new Error('state directory must be outside candidate stack');
   return statePath;
 }
-const RESERVED = new Set(['hosts', 'health', 'ingest']);
+const RESERVED = new Set(['hosts', 'health']);
 export function parseTargets(value, kind) {
   if (value === undefined) return [];
   const names = new Set();
@@ -187,8 +187,8 @@ export function tcpCheck({ host, port }) {
 }
 export async function main(args) {
   const config = Object.fromEntries(args.reduce((pairs, value, index) => { if (index % 2 === 0) pairs.push([value.replace(/^--/, ''), args[index + 1]]); return pairs; }, []));
-  const { 'state-dir': state, 'candidate-dir': candidate, statsctl, hosts, health, 'credential-file': credential, 'interval-s': interval } = config;
-  if (![state, candidate, statsctl, hosts, health, credential, interval].every(Boolean) || !Number.isFinite(Number(interval)) || Number(interval) <= 0) throw new Error('all paths and options are required');
+  const { 'state-dir': state, 'candidate-dir': candidate, statsctl, hosts, health, 'interval-s': interval } = config;
+  if (![state, candidate, statsctl, hosts, health, interval].every(Boolean) || !Number.isFinite(Number(interval)) || Number(interval) <= 0) throw new Error('all paths and options are required');
   const httpTargets = parseTargets(config.http, 'http'), tcpTargets = parseTargets(config.tcp, 'tcp');
   if (new Set([...httpTargets, ...tcpTargets].map(([name]) => name)).size !== httpTargets.length + tcpTargets.length) throw new Error('--http and --tcp check names must be distinct');
   const contentTargets = config['content-file'] === undefined ? [] : parseContentTargets(readFileSync(config['content-file'], 'utf8'));
@@ -198,25 +198,9 @@ export async function main(args) {
   const statePath = stateOutsideCandidate(state, candidate);
   const outbox = new Outbox(statePath);
   if (contentTargets.length > 0) contentLoop(statePath, contentTargets, contentInterval * 1000, outbox).catch(error => { console.error(`content loop failed: ${error.message}`); process.exit(1); });
-  let lastIngest = 0;
-  try {
-    const evidence = readFileSync(resolve(statePath, 'evidence.jsonl'), 'utf8');
-    if (evidence && !evidence.endsWith('\n')) throw new Error('incomplete evidence');
-    for (const line of evidence.split('\n').filter(Boolean)) {
-      const entry = JSON.parse(line);
-      if (entry.condition === 'ingest') lastIngest = Math.max(lastIngest, Date.parse(entry.at));
-    }
-  } catch (error) { if (error.code !== 'ENOENT') throw error; }
   for (;;) {
     const checks = [['hosts', () => command(statsctl, ['check', 'hosts', '--hosts', hosts, '--json'])], ['health', () => httpCheck(health)],
       ...httpTargets.map(([name, url]) => [name, () => httpCheck(url)]), ...tcpTargets.map(([name, address]) => [name, () => tcpCheck(address)])];
-    if (Date.now() - lastIngest >= 300000) {
-      checks.push(['ingest', () => {
-        lastIngest = Date.now();
-        appendDurable(resolve(statePath, 'evidence.jsonl'), { at: new Date(lastIngest).toISOString(), condition: 'ingest', attempt: true });
-        return command(statsctl, ['check', 'ingest', '--credential-file', credential, '--json']);
-      }]);
-    }
     for (const [condition, check] of checks) {
       const result = await check();
       appendRotating(resolve(statePath, 'evidence.jsonl'), { at: new Date().toISOString(), condition, ...result });
