@@ -405,7 +405,7 @@ stops accepting connections, finishes requests in flight, closes the
 database, and exits 0.
 
 Back up the whole `STATS_DATA_DIR` while the server is stopped. Include
-`stats.sqlite` and the `stats.sqlite.observe` directory. The latter contains
+`stats.sqlite`, the `stats.sqlite.observe` directory, and the `stats.sqlite.metrics` directory. The latter contains
 one database per observation service. Preserve the original observation tables
 in `stats.sqlite` when inspecting ambiguous legacy data. Migration copies only
 rows whose service ownership is known, preserves issue resolution, and records

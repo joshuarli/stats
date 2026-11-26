@@ -43,6 +43,14 @@ export class MetricStoreCore {
       if (statement.trim()) this.db.run(statement);
     }
   }
+  recordNativeRuntime(atMs: number, payload: string): void {
+    this.db.transaction(() => {
+      this.db.run("CREATE TABLE IF NOT EXISTS native_runtime_samples (at_ms INTEGER PRIMARY KEY, payload TEXT NOT NULL)");
+      this.db.run("INSERT OR REPLACE INTO native_runtime_samples VALUES (?, ?)", atMs, payload);
+      this.db.run("DELETE FROM native_runtime_samples WHERE at_ms <= ?", atMs - retention);
+      this.db.run("DELETE FROM native_runtime_samples WHERE at_ms IN (SELECT at_ms FROM native_runtime_samples ORDER BY at_ms DESC LIMIT -1 OFFSET 8640)");
+    });
+  }
   private prepare(query: string) {
     return {
       all: (...params: SqlValue[]): unknown[] => this.db.rows(query, ...params),

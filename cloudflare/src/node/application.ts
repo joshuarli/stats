@@ -40,6 +40,8 @@ export class NodeApplicationEvents {
   private readonly producer: ReturnType<typeof createBindingProducer>;
   private readonly options: ApplicationEventSinkOptions;
   private droppedOperations = 0;
+  private admitted = 0;
+  private queueHigh = 0;
   readonly operations: OperationSink;
 
   constructor(observe: NodeObservations, release: string) {
@@ -49,7 +51,7 @@ export class NodeApplicationEvents {
       postBatch: (body, signal) => handleApi(new Request("https://observe/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body, signal }), "/ingest/observe/v1/batches", observe.forService("stats"), "stats")
     });
     this.options = { release, now: () => Date.now(), post: body => {
-      for (const event of body.events) this.producer.record({
+      for (const event of body.events) this.record({
         eventId: event.eventId, atMs: event.atMs, release: event.release, operation: event.operation,
         outcome: event.outcome, durationMs: event.durationMs, work: event.work,
         ...(event.operation.startsWith("http.") && this.context.getStore() != null
@@ -105,7 +107,7 @@ export class NodeApplicationEvents {
     const traceId = this.responseTraces.get(response);
     if (traceId === undefined) return undefined;
     const started = performance.now();
-    return cancelled => this.producer.record({ atMs: Date.now(), operation: "http.response.body", outcome: cancelled ? "cancelled" : "ok",
+    return cancelled => this.record({ atMs: Date.now(), operation: "http.response.body", outcome: cancelled ? "cancelled" : "ok",
       durationMs: Math.min(86_400_000, Math.max(0, Math.round(performance.now() - started))),
       work: { http_status: response.status }, trace: { traceId, spanId: id(8) } });
   }
@@ -128,7 +130,7 @@ export class NodeApplicationEvents {
   }
 
   private recordInvocation(traceId: string, atMs: number, durationMs: number, outcome: string): void {
-    this.producer.record({ atMs, operation: "installation.request", outcome, durationMs, trace: { traceId, spanId: id(8) },
+    this.record({ atMs, operation: "installation.request", outcome, durationMs, trace: { traceId, spanId: id(8) },
       ...(outcome === "error" ? { errorCode: "installation.request" } : {}) });
   }
 
@@ -136,12 +138,20 @@ export class NodeApplicationEvents {
     const event = toApplicationEvent(summary, this.options);
     const work = { ...event.work };
     delete work["sql_rows_read"];
-    this.producer.record({ atMs: event.atMs, operation: event.operation, outcome, durationMs: event.durationMs,
+    this.record({ atMs: event.atMs, operation: event.operation, outcome, durationMs: event.durationMs,
       work: { ...work, synthetic: summary.synthetic ? 1 : 0 }, trace: { traceId, spanId: id(8) },
       ...(outcome === "error" ? { errorCode: event.operation } : {}) });
   }
 
+  private record(event: Parameters<typeof this.producer.record>[0]): void {
+    const before = this.producer.stats();
+    this.producer.record(event);
+    const after = this.producer.stats();
+    if (after.lastError !== "invalid_event" || after.dropped === before.dropped) this.admitted += 1;
+    this.queueHigh = Math.max(this.queueHigh, after.queued, Math.min(128, before.queued + 1));
+  }
+
   flush(): Promise<void> { return this.producer.flush(); }
   shutdown(): Promise<void> { return this.producer.shutdown(); }
-  stats(): ProducerStats { const stats = this.producer.stats(); return { ...stats, dropped: stats.dropped + this.droppedOperations }; }
+  stats(): ProducerStats & { admitted: number; queueHigh: number } { const stats = this.producer.stats(); return { ...stats, admitted: this.admitted, queueHigh: this.queueHigh, dropped: stats.dropped + this.droppedOperations }; }
 }

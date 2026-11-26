@@ -11,11 +11,13 @@ export class TimerScheduler implements Scheduler {
   private timer: NodeJS.Timeout | null = null;
   private dueMs: number | null = null;
   private stopped = false;
+  private readonly late: ((ms: number) => void) | undefined;
 
-  constructor(clock: Clock, fire: () => Promise<void>, failed: (error: unknown) => void) {
+  constructor(clock: Clock, fire: () => Promise<void>, failed: (error: unknown) => void, late?: (ms: number) => void) {
     this.clock = clock;
     this.fire = fire;
     this.failed = failed;
+    this.late = late;
   }
 
   pending(): Promise<number | null> {
@@ -50,6 +52,7 @@ export class TimerScheduler implements Scheduler {
       this.arm();
       return;
     }
+    if (this.dueMs !== null) this.late?.(Math.max(0, this.clock.now() - this.dueMs));
     this.dueMs = null;
     this.fire().catch(this.failed);
   }

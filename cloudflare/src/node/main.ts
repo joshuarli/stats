@@ -7,6 +7,7 @@ import { handleMetricRequest } from "../metrics/http.ts";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
 import { nodeConfig, NodeConfigError, type Listen } from "./config.ts";
 import { DatabaseInUseError, openNodeInstallation, type NodeInstallation } from "./installation.ts";
+import { NodeRuntime } from "./runtime.ts";
 import { createStatsServer, observeHandler } from "./server.ts";
 import { listenOnSocket } from "./socket.ts";
 
@@ -24,24 +25,29 @@ function listenOn(server: Server, listen: Listen): Promise<void> {
 async function main(): Promise<void> {
   const config = nodeConfig(process.env);
   const assets = await openAssets(BUILT_ASSETS);
-  let installation: NodeInstallation;
-  try {
-    installation = openNodeInstallation({ path: config.databasePath, projects: "[]", release: process.env["APPLICATION_EVENTS_RELEASE"] });
-  } catch (error) {
-    if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
-    throw error;
-  }
   const directory = `${config.databasePath}.metrics`;
   let metrics: MetricStore | undefined;
+  const metricPath = join(directory, `${INFRA_SERVICE}.sqlite`);
+  let runtime: NodeRuntime;
   const metricStore = () => {
     if (metrics === undefined) {
       mkdirSync(directory, { recursive: true });
-      metrics = new MetricStore(join(directory, `${INFRA_SERVICE}.sqlite`));
+      metrics = new MetricStore(metricPath, runtime.database("metrics:infra", metricPath));
     }
     return metrics;
   };
+  runtime = new NodeRuntime(metricStore);
+  let installation: NodeInstallation;
+  try {
+    installation = openNodeInstallation({ path: config.databasePath, projects: "[]", release: process.env["APPLICATION_EVENTS_RELEASE"], runtime });
+  } catch (error) {
+    runtime.stop();
+    if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
+    throw error;
+  }
   const server = createStatsServer({
     auth: config.auth,
+    runtime,
     application: installation.application,
     metricsVerifier: process.env["INFRA_METRICS_TOKEN_SHA256"],
     metrics: request => handleMetricRequest(request, metricStore()),
@@ -63,14 +69,18 @@ async function main(): Promise<void> {
   try {
     await listenOn(server, config.listen);
   } catch (error) {
+    runtime.stop();
     await installation.shutdown();
+    metrics?.close();
     throw error;
   }
+  runtime.sample();
   const address = server.address();
   console.log(JSON.stringify(typeof address === "string" || address === null ? { event: "listening", socket: address } : { event: "listening", host: address.address, port: address.port }));
   const stop = (signal: NodeJS.Signals) => {
     if (draining) return;
     draining = true;
+    runtime.stop();
     console.log(JSON.stringify({ event: "stopping", signal }));
     server.close(error => {
       void installation.shutdown().then(() => {

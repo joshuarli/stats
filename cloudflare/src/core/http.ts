@@ -29,6 +29,7 @@ export interface StatsTarget {
   readonly installation: (request: Request) => Promise<Response>;
   readonly assets: (request: Request) => Promise<Response>;
   readonly observe: ObserveService | null;
+  readonly runtime?: () => unknown;
   readonly recordBrowserJourney?: (journey: BrowserJourney) => void;
 }
 
@@ -260,6 +261,7 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     if (!decision.ok) return denied(decision);
     if (crossSiteWrite(request)) return error(403, "forbidden", "cross-origin request");
     const suffix = path.slice("/api/v1".length);
+    if (path === "/api/v1/runtime" && target.runtime !== undefined) return request.method === "GET" ? secure(Response.json(target.runtime())) : error(405, "invalid_request", "GET required");
     if (path === UI_JOURNEY_PATH) {
       if (request.method !== "POST") return error(405, "invalid_request", "POST required");
       if (target.recordBrowserJourney === undefined) return error(503, "unavailable", "browser observations are unavailable");

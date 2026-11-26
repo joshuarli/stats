@@ -4,6 +4,7 @@ import { InstallationCore } from "../core/installation/installation.ts";
 import { APPLICATION_EVENT_READ_LIMIT } from "../deployments/service-compare.ts";
 import { NodeObservations } from "./observations.ts";
 import { initializeStore } from "../observe/core/store.ts";
+import type { NodeRuntime } from "./runtime.ts";
 import { NodeApplicationEvents } from "./application.ts";
 import { systemClock, TimerScheduler } from "./ports.ts";
 import type { ProbeFetch } from "../projects/probes.ts";
@@ -26,6 +27,7 @@ function lockExclusively(db: DatabaseSync): void {
 }
 
 export interface NodeInstallationOptions {
+  readonly runtime?: NodeRuntime | undefined;
   readonly release?: string | undefined;
   readonly path: string;
   readonly projects: string;
@@ -49,13 +51,14 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
   let core: InstallationCore;
   const scheduler = new TimerScheduler(clock, () => core.alarm(), error => {
     console.error(JSON.stringify({ event: "alarm_rejected", name: error instanceof Error ? error.name : typeof error }));
-  });
+  }, ms => options.runtime?.retention("installation", ms));
   let observe: NodeObservations | undefined;
   try {
-    const sql = nodeSqlScopes(db);
+    const sql = nodeSqlScopes(db, options.runtime?.database("installation", options.path));
     initializeStore(sql.open());
-    observe = new NodeObservations(db, options.path, clock);
+    observe = new NodeObservations(db, options.path, clock, options.runtime);
     const application = options.release === undefined ? undefined : new NodeApplicationEvents(observe, options.release);
+    options.runtime?.attachApplication(application);
     core = new InstallationCore(
       {
         sql, clock, monotonic: () => performance.now(), scheduler, operations: application?.operations ?? { invocation: () => {}, operation: () => {} }, probesServices: true,

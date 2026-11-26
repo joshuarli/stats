@@ -9,12 +9,14 @@ import { gatewayDecision } from "../core/gateway.ts";
 import type { NodeAuth } from "./config.ts";
 import { handleStatsRequest, type ObserveService, type StatsTarget } from "../core/http.ts";
 import { handleApi } from "../observe/http/api.ts";
+import type { NodeRuntime } from "./runtime.ts";
 import type { NodeApplicationEvents } from "./application.ts";
 import type { NodeInstallation } from "./installation.ts";
 import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
+  readonly runtime?: NodeRuntime | undefined;
   readonly application?: NodeApplicationEvents | undefined;
   readonly auth?: NodeAuth | undefined;
   readonly metricsVerifier?: string | undefined;
@@ -62,7 +64,7 @@ function encoder(coding: string | null): Transform | null {
   return null;
 }
 
-async function respond(outgoing: ServerResponse, response: Response, method: string): Promise<void> {
+async function respond(outgoing: ServerResponse, response: Response, method: string, runtime?: NodeRuntime): Promise<void> {
   const headers = new Headers(response.headers);
   // workerd compresses a body whose Content-Encoding it is handed; node:http sends bytes as given.
   const compress = response.body === null ? null : encoder(headers.get("Content-Encoding"));
@@ -74,7 +76,10 @@ async function respond(outgoing: ServerResponse, response: Response, method: str
     return;
   }
   const body = Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>);
-  await (compress === null ? pipeline(body, outgoing) : pipeline(body, compress, outgoing));
+  const count = new Transform({ transform(chunk: Buffer, _encoding, callback) { runtime?.responseBytes(chunk.byteLength); callback(null, chunk); } });
+  runtime?.streamStarted();
+  try { await (compress === null ? pipeline(body, count, outgoing) : pipeline(body, compress, count, outgoing)); }
+  finally { runtime?.streamFinished(); }
 }
 
 function failed(outgoing: ServerResponse, error: unknown): void {
@@ -89,9 +94,12 @@ function failed(outgoing: ServerResponse, error: unknown): void {
 export function statsRequestListener(options: NodeStatsOptions): (incoming: IncomingMessage, outgoing: ServerResponse) => void {
   const shared = { installation: options.installation, assets: options.assets, observe: options.observe ?? UNAVAILABLE };
   return (incoming, outgoing) => {
+    options.runtime?.requestStarted();
+    outgoing.once("close", () => options.runtime?.requestFinished());
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = {
       ...shared,
+      ...(options.runtime === undefined ? {} : { runtime: () => options.runtime!.snapshot() }),
       ...(options.application === undefined ? {} : { recordBrowserJourney: (journey) => options.application!.recordBrowserJourney(journey) }),
       metricsAvailable: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? ""),
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
@@ -122,7 +130,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
         outgoing.once("finish", () => { finished = true; complete(false); });
         outgoing.once("close", () => { if (!finished) complete(true); });
       }
-      await respond(outgoing, response, request.method);
+      await respond(outgoing, response, request.method, options.runtime);
     })().catch((error: unknown) => failed(outgoing, error));
   };
 }

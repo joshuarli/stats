@@ -9,6 +9,7 @@ import { createObserveService, type MaintainedService } from "../observe/core/se
 import { initializeStore } from "../observe/core/store.ts";
 import { SERVICE_SLUG, type ExternalEvent } from "../observe/ingest/model.ts";
 import { TimerScheduler } from "./ports.ts";
+import type { NodeRuntime } from "./runtime.ts";
 import { nodeSqlScopes } from "./sql.ts";
 
 const MAX_OPEN_STORES = 256;
@@ -21,16 +22,18 @@ export class NodeObservations {
 
   private readonly legacy: DatabaseSync;
   private readonly clock: Clock;
+  private readonly runtime: NodeRuntime | undefined;
 
-  constructor(legacy: DatabaseSync, path: string, clock: Clock) {
+  constructor(legacy: DatabaseSync, path: string, clock: Clock, runtime?: NodeRuntime) {
     this.legacy = legacy;
     this.clock = clock;
+    this.runtime = runtime;
     this.directory = `${path}.observe`;
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
     this.scheduler = new TimerScheduler(clock, async () => this.maintain(), error => {
       console.error(JSON.stringify({ event: "observe_cleanup_failed", name: error instanceof Error ? error.name : typeof error }));
       void this.scheduler.at(clock.now() + MAINTENANCE_MS);
-    });
+    }, ms => { for (const name of this.stores.keys()) this.runtime?.retention(`observe:${name}`, ms); });
     try {
       for (const file of readdirSync(this.directory)) {
         if (file.endsWith(".sqlite") && SERVICE_SLUG.test(file.slice(0, -7))) this.forService(file.slice(0, -7));
@@ -50,10 +53,11 @@ export class NodeObservations {
     const prior = this.stores.get(name);
     if (prior !== undefined) return prior.service;
     if (this.stores.size >= MAX_OPEN_STORES) throw new RangeError("Node supports at most 256 observation stores");
-    const db = new DatabaseSync(join(this.directory, `${name}.sqlite`));
+    const path = join(this.directory, `${name}.sqlite`);
+    const db = new DatabaseSync(path);
     try {
       db.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN IMMEDIATE; COMMIT");
-      const sql = nodeSqlScopes(db).open();
+      const sql = nodeSqlScopes(db, this.runtime?.database(`observe:${name}`, path)).open();
       initializeStore(sql);
       this.migrate(db, name);
       const maintained = createObserveService(sql, { now: () => this.clock.now(), databaseBytes: () => sql.databaseBytes() });

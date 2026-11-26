@@ -1,13 +1,16 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import type { SqlObservation } from "./runtime.ts";
 import { SqlMeter, type SqlDatabase, type SqlRows, type SqlScopes, type SqlValue } from "../core/sql.ts";
 
 class Connection {
   readonly db: DatabaseSync;
   private readonly totalChanges: StatementSync;
   private depth = 0;
+  readonly observation: SqlObservation | undefined;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: DatabaseSync, observation?: SqlObservation) {
     this.db = db;
+    this.observation = observation;
     this.totalChanges = db.prepare("SELECT total_changes() AS changes");
   }
 
@@ -15,7 +18,15 @@ class Connection {
     return Number((this.totalChanges.get() as { changes: number | bigint }).changes);
   }
 
+  measure<T>(kind: "statement" | "transaction", fn: () => T): T {
+    return this.observation === undefined ? fn() : this.observation.measure(kind, fn);
+  }
+
   transaction<T>(fn: () => T): T {
+    return this.measure("transaction", () => this.transact(fn));
+  }
+
+  private transact<T>(fn: () => T): T {
     const savepoint = `nested_${this.depth}`;
     this.db.exec(this.depth === 0 ? "BEGIN IMMEDIATE" : `SAVEPOINT ${savepoint}`);
     this.depth += 1;
@@ -54,7 +65,7 @@ class NodeSql implements SqlDatabase {
   rows<T>(query: string, ...params: SqlValue[]): T[] {
     const before = this.connection.changes();
     try {
-      return this.connection.db.prepare(query).all(...params) as T[];
+      return this.connection.measure("statement", () => this.connection.db.prepare(query).all(...params) as T[]);
     } finally {
       this.meter.record(0, this.connection.changes() - before);
     }
@@ -63,7 +74,7 @@ class NodeSql implements SqlDatabase {
   each<T>(query: string, params: readonly SqlValue[], visit: (row: T) => void): void {
     const before = this.connection.changes();
     try {
-      for (const row of this.connection.db.prepare(query).iterate(...params)) visit(row as T);
+      this.connection.measure("statement", () => { for (const row of this.connection.db.prepare(query).iterate(...params)) visit(row as T); });
     } finally {
       this.meter.record(0, this.connection.changes() - before);
     }
@@ -72,7 +83,7 @@ class NodeSql implements SqlDatabase {
   run(query: string, ...params: SqlValue[]): void {
     const before = this.connection.changes();
     try {
-      this.connection.db.prepare(query).run(...params);
+      this.connection.measure("statement", () => this.connection.db.prepare(query).run(...params));
     } finally {
       this.meter.record(0, this.connection.changes() - before);
     }
@@ -95,7 +106,7 @@ class NodeSql implements SqlDatabase {
   }
 }
 
-export function nodeSqlScopes(db: DatabaseSync): SqlScopes {
-  const connection = new Connection(db);
+export function nodeSqlScopes(db: DatabaseSync, observation?: SqlObservation): SqlScopes {
+  const connection = new Connection(db, observation);
   return { open: () => new NodeSql(connection) };
 }
