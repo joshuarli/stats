@@ -442,8 +442,9 @@ Since 2026-11-26 production Stats is the Node server in the
 `stats-recovery-vm` guest, behind the unchanged route: Lisa's Caddy
 (`stats.17166969.xyz`, identity sidecar, `Stats-Gateway-Secret`) →
 `127.0.0.1:18489` → `oo-stats-live-tunnel` → guest `127.0.0.1:8080`.
-OpenOrange, Rivet and the Engine container are stopped and out of the
-runlevel; their data stays on the guest disk untouched.
+On 2026-11-26 at 15:53 UTC the OpenOrange units, the stats-infra-collector,
+the Engine container, Docker and all their data were deleted from the guest;
+its root filesystem went from 92% to 7% used. There is no OpenOrange rollback.
 
 The guest has 2 GiB and a virtio balloon with free page reporting
 ([unit](../deploy/orange/recovery/stats-recovery-vm.openrc)); its cgroup

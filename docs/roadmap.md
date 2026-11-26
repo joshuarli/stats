@@ -4,7 +4,7 @@ This is the single plan for this repository: all current and future work, and th
 
 ## Status
 
-- Native migration (NS): active since 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend. Production Stats runs on Node in the Threadripper guest since 04:57 UTC (fresh installation, credentials rebuilt; see [operations](operations.md#production-in-the-threadripper-guest)). Open: NS4 (24 h soak, removal of OpenOrange/Rivet from the guest after 04:57 UTC on 2026-11-27, STA-140). The post-cutover quality pass is recorded under the campaign. Resume from [Campaign: Native Stats](#campaign-native-stats); shared Stuff stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff).
+- Native migration (NS): active since 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend. Production Stats runs on Node in the Threadripper guest since 04:57 UTC (fresh installation, credentials rebuilt; see [operations](operations.md#production-in-the-threadripper-guest)). OpenOrange/Rivet was removed from the guest at 15:53 UTC on 2026-11-26, about 11 h after cutover, by owner decision; no rollback target remains. Open: NS4 (24 h soak, one recorded hypothesis). The post-cutover quality pass is recorded under the campaign. Resume from [Campaign: Native Stats](#campaign-native-stats); shared Stuff stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff).
 - Active: simplification and self-optimization, S1, S2 and S5; S0 is complete.
 - Last accepted repository revision: `c5855db751141c82e9a90bfa3fe6644ab56c4a14`; integration green at this revision is not established. S0 recorded a green fresh-checkout `make cloudflare-test`.
 - S1 app and collector use the rollout transaction; capture and disposable guest recreation were exercised. S2's log-shard mechanism was repaired; the CPU spin remains open (STA-135).
@@ -62,8 +62,8 @@ runtime does not close them as repaired.
 | --- | --- | --- | --- | --- |
 | NS1 | Node parity: gateway auth adapter, operation sink, HTTP capture and browser journeys, runtime/SQLite observations, SQLite WAL/FULL policy, bounded shutdown, loaded identity | `pnpm --dir cloudflare run typecheck lint test:node test:observe test:node-e2e test:metrics` | n/a | Done (merge `0d9d04b3`) |
 | NS2 | Guest packaging and isolated candidate | Candidate `stats-node.candidate` on `127.0.0.1:8180`: health, gateway 401 without secret, registration restore rehearsal | Old unit untouched | Done |
-| NS3 | Cutover | 04:56:54–04:57:18 UTC; synthetic ingest all seven steps pass; lisa, threadripper and sentry resumed; ten restarts 0.66–1.03 s to ready with exact readback; `statsctl` targets `node` at the canonical origin (`5b26fc4e`) | `rc-update add native-stats default && rc-service native-stats start && docker start live-stats-engine` after stopping `stats-node.main` | Done |
-| NS4 | Soak and self-improvement cycle; then remove OpenOrange/Rivet from the guest | 24 h soak and 24 h post-cutover; one recorded hypothesis | Retained OpenOrange data on the guest disk | Open |
+| NS3 | Cutover | 04:56:54–04:57:18 UTC; synthetic ingest all seven steps pass; lisa, threadripper and sentry resumed; ten restarts 0.66–1.03 s to ready with exact readback; `statsctl` targets `node` at the canonical origin (`5b26fc4e`) | None since 2026-11-26 15:53 UTC: the OpenOrange units, Engine container and data were deleted | Done |
+| NS4 | Soak and self-improvement cycle; remove OpenOrange/Rivet from the guest | 24 h soak; one recorded hypothesis | None: OpenOrange/Rivet removed at 15:53 UTC on 2026-11-26 by owner decision before the 24 h window ended | Open (removal done) |
 
 Before the cutover the OpenOrange deployment answered `/health` but returned
 503 for `/api/v1/hosts`, `/api/v1/admin/objects` and the service list, and
@@ -123,8 +123,7 @@ Post-cutover quality pass (2026-11-26, after an independent review of
   rotated and verified without writes (STA-139 closed). STA-141 records the
   parked Lisa producers that still send to the retired container.
 
-Follow-ups: STA-140 (remove OpenOrange from the guest after 24 h),
-STA-141, STA-142 (disk-usage RFC), STA-143 (agents in the guests),
+Follow-ups: STA-141, STA-142 (disk-usage RFC), STA-143 (agents in the guests),
 STA-144 (tim), STA-145.
 
 ## Campaign: Simplification and self-optimization

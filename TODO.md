@@ -48,15 +48,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** none
 - **Effort:** S
 
-### STA-140 · P2 · Remove the retired OpenOrange stack from the Stats guest
-
-- **Area:** Operations · Cleanup
-- **Where:** the Stats guest: `/etc/init.d/native-stats`, `stats-infra-collector`, the `live-stats-engine` container, `/var/lib/live-stats`, `/var/lib/rivet-native`, `/opt/native-rehearsal`
-- **Problem:** Since 2026-11-26 04:57 UTC production Stats is `stats-node.main`. The OpenOrange unit, collector and Engine container are stopped and out of the runlevel but their 12.8 GB of data stays on a root filesystem that is 91% full, and the Node databases grow on the same filesystem.
-- **Recommendation:** After the 24-hour post-cutover window (from 2026-11-26 04:57 UTC) passes without rollback, archive what is worth keeping off-guest and delete the rest, then remove the units and container. Keep `stats-node` and its data. Do not touch the Lisa Engine used by the parked apps.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-135 · P1 · Keep the standby Engine out of its alarm retry loop under host CPU contention
 
 - **Area:** Operations · Engine
