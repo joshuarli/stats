@@ -92,7 +92,19 @@ const MIGRATIONS: readonly Migration[] = [
       }
     }
   },
-  { version: 10, statements: [ROLLUP_PENDING_HOURS] }
+  { version: 10, statements: [ROLLUP_PENDING_HOURS] },
+  { version: 11, statements: [
+    `CREATE TABLE IF NOT EXISTS service_probe_results (
+      service TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('ok', 'degraded', 'down')),
+      http_status INTEGER,
+      latency_ms INTEGER NOT NULL CHECK (latency_ms >= 0),
+      at_ms INTEGER NOT NULL CHECK (at_ms >= 0),
+      checks TEXT NOT NULL,
+      reason TEXT
+    ) STRICT`,
+    "CREATE TABLE IF NOT EXISTS service_probe_round (id INTEGER PRIMARY KEY CHECK (id = 1), completed_at_ms INTEGER NOT NULL) STRICT"
+  ] }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number; readonly pendingHours?: number }): number {

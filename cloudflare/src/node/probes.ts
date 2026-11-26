@@ -1,6 +1,5 @@
 import type { InstallationCore } from "../core/installation/installation.ts";
 import type { Clock } from "../core/ports.ts";
-import { BUCKET_MS } from "../projects/queries.ts";
 import type { ProbeFetch } from "../projects/probes.ts";
 import { TimerScheduler } from "./ports.ts";
 
@@ -10,7 +9,7 @@ export interface ProbeSchedule {
 }
 
 export function nextProbeAtMs(nowMs: number): number {
-  return (Math.floor(nowMs / BUCKET_MS) + 1) * BUCKET_MS;
+  return (Math.floor(nowMs / 60_000) + 1) * 60_000;
 }
 
 export function scheduleServiceProbes(options: { readonly core: InstallationCore; readonly clock: Clock; readonly fetch: ProbeFetch; readonly failed: (error: unknown) => void }): ProbeSchedule {

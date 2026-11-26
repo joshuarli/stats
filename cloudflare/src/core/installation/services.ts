@@ -4,7 +4,7 @@ import { constantTimeEqual, generateToken, tokenHash } from "../../auth.ts";
 import { annotation, DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentHistory, type LatestDeployment } from "../../deployments/model.ts";
 import { SERVICE_NAME } from "../../protocol.ts";
 import type { SqlDatabase } from "../sql.ts";
-import { SERVICE_PROBE_NAME } from "../../deployments/service-compare.ts";
+import type { ServiceProbeResult } from "../../projects/service-probes.ts";
 
 export const MAX_MARKER_BODY_BYTES = 8192;
 export const MAX_SERVICE_BODY_BYTES = 8192;
@@ -53,9 +53,8 @@ export interface Service {
 
 export type ServiceHealth =
   | { readonly status: "unprobed" }
-  | { readonly status: "up" | "down"; readonly atMs: number; readonly ms: number | null };
-
-export const SERVICE_HEALTH_FRESH_MS = 15 * 60_000;
+  | { readonly status: "missing" }
+  | ServiceProbeResult;
 
 export interface ServiceMarker {
   readonly service: string;
@@ -102,7 +101,7 @@ type MarkerRow = {
 interface ServiceDefinition {
   readonly name: string;
   readonly hostIds: readonly string[];
-  readonly healthUrl: string | null;
+  readonly healthUrl: string;
   readonly unit: string | null;
 }
 
@@ -146,7 +145,7 @@ function healthUrl(value: unknown): string | null | undefined {
     return undefined;
   }
   if (url.username !== "" || url.password !== "" || url.hash !== "") return undefined;
-  const tailnet = url.protocol === "http:" && url.hostname.toLowerCase().endsWith(TAILNET_SUFFIX);
+  const tailnet = url.protocol === "http:" && (url.hostname.toLowerCase().endsWith(TAILNET_SUFFIX) || url.hostname === "127.0.0.1" || url.hostname === "[::1]" || url.hostname === "localhost");
   return url.protocol === "https:" || tailnet ? value : undefined;
 }
 
@@ -157,13 +156,13 @@ function optionalMatch(value: unknown, pattern: RegExp): string | null | undefin
 
 function parseDefinition(body: unknown): ServiceResult<ServiceDefinition> {
   const record = exactObject(body, SERVICE_KEYS);
-  if (record === null) return invalid("body must be an object with name, hostIds, and optional healthUrl and unit");
+  if (record === null) return invalid("body must be an object with name, hostIds, healthUrl, and optional unit");
   const name = record["name"];
   if (typeof name !== "string" || !SERVICE_NAME.test(name)) return invalid("name must be 1-32 lowercase letters, digits, or hyphens, starting with a letter");
   const hostIds = hostIdList(record["hostIds"]);
   if (hostIds === null) return invalid(`hostIds must be 1-${MAX_SERVICE_HOSTS} distinct host ids`);
   const url = healthUrl(record["healthUrl"]);
-  if (url === undefined) return invalid("healthUrl must be an https URL, or an http URL on the tailnet, without credentials or fragment");
+  if (url === null || url === undefined) return invalid("healthUrl must be an https URL, or an http URL on the tailnet or loopback, without credentials or fragment");
   const unit = optionalMatch(record["unit"], UNIT);
   if (unit === undefined) return invalid("unit must be 1-128 letters, digits, or ._@- starting with a letter or digit");
   return { ok: true, value: { name, hostIds, healthUrl: url, unit } };
@@ -265,7 +264,7 @@ export function updateService(sql: SqlDatabase, name: string, text: string | nul
   const hostIds = record["hostIds"] === undefined ? undefined : hostIdList(record["hostIds"]);
   if (hostIds === null) return invalid(`hostIds must be 1-${MAX_SERVICE_HOSTS} distinct host ids`);
   const url = "healthUrl" in record ? healthUrl(record["healthUrl"]) : null;
-  if (url === undefined) return invalid("healthUrl must be an https URL, or an http URL on the tailnet, without credentials or fragment, or null");
+  if (url === undefined || ("healthUrl" in record && url === null)) return invalid("healthUrl must be an https URL, or an http URL on the tailnet or loopback, without credentials or fragment");
   const unit = "unit" in record ? optionalMatch(record["unit"], UNIT) : null;
   if (unit === undefined) return invalid("unit must be 1-128 letters, digits, or ._@- starting with a letter or digit, or null");
   return sql.transaction((): ServiceResult<Service> => {
@@ -281,6 +280,7 @@ export function updateService(sql: SqlDatabase, name: string, text: string | nul
       unit: "unit" in record ? unit : row.unit
     };
     sql.run("UPDATE services SET host_ids = ?, health_url = ?, unit = ? WHERE name = ?", next.host_ids, next.health_url, next.unit, name);
+    if (next.health_url !== row.health_url) sql.run("DELETE FROM service_probe_results WHERE service = ?", name);
     return { ok: true, value: serviceOf({ ...row, ...next }) };
   });
 }
@@ -289,17 +289,11 @@ export function listServices(sql: SqlDatabase): Service[] {
   return sql.rows<ServiceRow>("SELECT * FROM services ORDER BY name").map(serviceOf);
 }
 
-function serviceHealth(sql: SqlDatabase, service: Service, now: number): ServiceHealth {
-  if (service.healthUrl === null) return { status: "unprobed" };
-  const rows = sql.rows<{ metric: string; bucket_ms: number; value: number }>(
-    `SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND metric IN (?, ?) AND bucket_ms = (
-      SELECT MAX(bucket_ms) FROM project_samples WHERE project = ? AND metric = ? AND bucket_ms >= ?)`,
-    serviceProbeOwner(service.name), `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`, serviceProbeOwner(service.name), `probe.${SERVICE_PROBE_NAME}.up`, now - SERVICE_HEALTH_FRESH_MS
-  );
-  const up = rows.find(row => row.metric.endsWith(".up"));
-  if (up === undefined) return { status: "unprobed" };
-  const ms = rows.find(row => row.metric.endsWith(".ms"))?.value ?? null;
-  return { status: up.value > 0 ? "up" : "down", atMs: up.bucket_ms, ms };
+function serviceHealth(sql: SqlDatabase, service: Service): ServiceHealth {
+  if (service.healthUrl === null) return { status: "missing" };
+  const row = sql.rows<{ status: ServiceProbeResult["status"]; http_status: number | null; latency_ms: number; at_ms: number; checks: string; reason: string | null }>("SELECT status, http_status, latency_ms, at_ms, checks, reason FROM service_probe_results WHERE service = ?", service.name)[0];
+  if (row === undefined) return { status: "unprobed" };
+  return { status: row.status, httpStatus: row.http_status, ms: row.latency_ms, atMs: row.at_ms, checks: JSON.parse(row.checks) as ServiceProbeResult["checks"], reason: row.reason };
 }
 
 export function listServicesWithDeployments(sql: SqlDatabase, now: number, onError: (error: unknown) => void): Service[] {
@@ -310,7 +304,7 @@ export function listServicesWithDeployments(sql: SqlDatabase, now: number, onErr
   );
   return rows.map(row => {
     const service = serviceOf(row);
-    const health = serviceHealth(sql, service, now);
+    const health = serviceHealth(sql, service);
     try {
       const latestDeployment: LatestDeployment = row.payload === null ? { status: "none" } : { status: "available", deployment: JSON.parse(row.payload) as Deployment, versions: [] };
       return { ...service, latestDeployment, health };
@@ -323,7 +317,9 @@ export function listServicesWithDeployments(sql: SqlDatabase, now: number, onErr
 
 export function readService(sql: SqlDatabase, name: string): Service | null {
   const row = serviceRow(sql, name);
-  return row === undefined ? null : serviceOf(row);
+  if (row === undefined) return null;
+  const service = serviceOf(row);
+  return { ...service, health: serviceHealth(sql, service) };
 }
 
 async function authenticate(sql: SqlDatabase, name: string, token: string | null, column: "token_hash" | "ingest_token_hash"): Promise<boolean> {
@@ -359,6 +355,7 @@ export function deleteService(sql: SqlDatabase, name: string): boolean {
   return sql.transaction(() => {
     if (serviceRow(sql, name) === undefined) return false;
     sql.run("DELETE FROM service_deployments WHERE service = ?", name);
+    sql.run("DELETE FROM service_probe_results WHERE service = ?", name);
     sql.run("DELETE FROM services WHERE name = ?", name);
     return true;
   });

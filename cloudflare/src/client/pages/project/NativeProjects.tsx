@@ -111,10 +111,10 @@ export function NativeServicesPage(): JSX.Element {
 }
 
 function healthLabel(service: Service): string {
-  if (service.healthUrl === null) return "no health URL";
+  if (service.healthUrl === null) return "missing";
   const health = service.health;
   if (health === undefined || health.status === "unprobed") return "health not probed yet";
-  return health.status === "up" ? "healthy" : "health check failing";
+  return health.status === "down" ? `down: ${health.reason ?? "health check failed"}` : health.status;
 }
 
 function ServiceResourcesSection(props: { readonly service: Service }): JSX.Element {
@@ -135,7 +135,7 @@ function ServiceResourcesSection(props: { readonly service: Service }): JSX.Elem
 }
 
 function healthTone(health: Service["health"]): "ok" | "bad" | "neutral" {
-  return health?.status === "up" ? "ok" : health?.status === "down" ? "bad" : "neutral";
+  return health?.status === "ok" ? "ok" : health?.status === "down" || health?.status === "missing" ? "bad" : "neutral";
 }
 
 interface ServiceUsage {
@@ -166,8 +166,8 @@ function UsageCell(props: { readonly usage: ServiceUsage | undefined; readonly l
 
 function HealthCell(props: { readonly service: Service }): JSX.Element {
   const health = createServiceHealth(() => props.service.healthUrl === null ? null : props.service.name);
-  return <Show when={props.service.healthUrl !== null} fallback={<span class="cell-note">no health URL</span>}>
-    <Show when={health.history()} fallback={<span class="cell-note">{health.error() ?? "…"}</span>}>{history => <HealthBars history={history()} label={`${props.service.name} health`} compact />}</Show>
+  return <Show when={props.service.healthUrl !== null} fallback={<span class="cell-note">missing</span>}>
+    <span class="cell-stack"><span>{healthLabel(props.service)}</span><Show when={health.history()} fallback={<span class="cell-note">{health.error() ?? "…"}</span>}>{history => <HealthBars history={history()} label={`${props.service.name} health`} compact />}</Show></span>
   </Show>;
 }
 

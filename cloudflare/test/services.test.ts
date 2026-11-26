@@ -4,6 +4,7 @@ import { gatewayHeaders } from "./gateway-headers";
 import { CloudflareSql } from "../src/cloudflare/sql";
 import { authenticateDeployToken, authenticateIngestToken } from "../src/core/installation/services";
 import type { DeploymentHistory } from "../src/deployments/model";
+import { probeService } from "../src/projects/service-probes";
 
 const NOW = 1_793_510_415_000;
 const ORIGIN = "https://example.com";
@@ -44,13 +45,18 @@ async function markerRows(name: string): Promise<number> {
 async function provisioned(name: string, hostNames: readonly string[] = ["web-1", "web-2"]): Promise<{ hostIds: string[]; deployToken: string; ingestToken: string }> {
   const hostIds: string[] = [];
   for (const host of hostNames) hostIds.push(await createHost(`${name}-${host}`));
-  const response = await createService({ name, hostIds });
+  const response = await createService({ name, hostIds, healthUrl: `https://${name}.example/health` });
   expect(response.status).toBe(201);
   const created = await response.json() as { deployToken: string; ingestToken: string };
   return { hostIds, deployToken: created.deployToken, ingestToken: created.ingestToken };
 }
 
 describe("services", () => {
+  it("classifies a contract probe in the Worker runtime", async () => {
+    const result = await probeService({ name: "web", url: "https://web.example/health", now: NOW, fetch: async () => Response.json({ status: "degraded", service: "web", checks: { database: { status: "down" } } }) });
+    expect(result.status).toBe("degraded");
+    expect(result.checks).toEqual([{ name: "database", status: "down" }]);
+  });
   it("refuses to purge a host a service lists with 409, and purges it once no service lists it", async () => {
     const lone = await createHost("lonely");
     expect((await admin(`/admin/hosts/${lone}/purge`, { method: "DELETE" })).status).toBe(204);
@@ -86,7 +92,7 @@ describe("services", () => {
     const one = await admin("/services/api");
     expect(one.status).toBe(200);
     const oneText = await one.text();
-    expect(JSON.parse(oneText)).toEqual({ name: "api", hostIds: [...hostIds].sort(), healthUrl: "https://api.example.com/health", unit: "api@1.service", createdAtMs: NOW });
+    expect(JSON.parse(oneText)).toEqual({ name: "api", hostIds: [...hostIds].sort(), healthUrl: "https://api.example.com/health", unit: "api@1.service", createdAtMs: NOW, health: { status: "unprobed" } });
 
     const marked = await mark("api", deployToken, { markerId: "run-1", version: "abc123", hostIds: [hostIds[0]] });
     const markedText = await marked.text();
@@ -211,13 +217,14 @@ describe("services", () => {
       [{ name: "valid", hostIds: [live], extra: true }, 400],
       [[], 400]
     ];
-    for (const [body, status] of cases) expect((await createService(body)).status, JSON.stringify(body)).toBe(status);
+    for (const [body, status] of cases) expect((await createService({ healthUrl: "https://fixture.example/health", ...(body as object) })).status, JSON.stringify(body)).toBe(status);
+    expect((await createService({ name: "valid", hostIds: [live] })).status).toBe(400);
     expect((await admin("/admin/services", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" })).status).toBe(400);
     expect((await admin("/admin/services", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" })).status).toBe(415);
     expect((await admin("/services/valid")).status).toBe(404);
 
     expect((await createService({ name: "valid", hostIds: [live], healthUrl: "http://web.tail1234.ts.net:8080/health" })).status).toBe(201);
-    const duplicate = await createService({ name: "valid", hostIds: [live] });
+    const duplicate = await createService({ name: "valid", hostIds: [live], healthUrl: "https://valid.example/health" });
     expect(duplicate.status).toBe(409);
     expect(await duplicate.json()).toEqual({ error: { code: "conflict", message: "a service with this name exists" } });
     expect((await admin("/services/missing")).status).toBe(404);

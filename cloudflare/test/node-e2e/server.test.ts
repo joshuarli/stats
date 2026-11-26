@@ -297,7 +297,7 @@ await test("ten consecutive restarts preserve exact data and recover health with
   }
 });
 
-await test("startup identity is logged and available only on the authenticated runtime route", async () => {
+await test("startup identity exposes its release on health and full details on the authenticated runtime route", async () => {
   const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-identity-"));
   const commit = "abcdef1234567890abcdef1234567890abcdef12";
   const server = await start(dataDir, { APPLICATION_EVENTS_RELEASE: "release-123", STATS_SOURCE_COMMIT: commit });
@@ -314,7 +314,8 @@ await test("startup identity is logged and available only on the authenticated r
     assert.equal(body.identity.schemas.applicationEvents, 1);
     assert.equal(body.identity.schemas.metrics, "stats-infra-metrics/2");
     const health = await (await fetch(`${server.origin}/health`)).text();
-    assert.doesNotMatch(health, /release-123|abcdef1234567890|node|schema/u);
+    assert.equal((JSON.parse(health) as { release: string }).release, "release-123");
+    assert.doesNotMatch(health, /abcdef1234567890|node|schema/u);
   } finally {
     server.child.kill("SIGTERM");
     await server.exited();

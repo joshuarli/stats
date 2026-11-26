@@ -32,7 +32,8 @@ import { authenticateDeployToken, authenticateIngestToken, createService, delete
 import { hostServiceResources, resourceWindow } from "./service-resources.ts";
 import { healthWindow, serviceHealthHistory } from "./service-health.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
-import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
+import type { ProbeFetch } from "../../projects/probes.ts";
+import { probeService } from "../../projects/service-probes.ts";
 
 const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;
@@ -107,6 +108,7 @@ export class InstallationCore {
   private readonly config: InstallationConfig;
   private readonly historyCache = new Map<string, (kind: HistoryKind) => HostHistoryColumns>();
   private readonly rawRows = new RawRowCache();
+  private probingServices = false;
 
   constructor(ports: InstallationPorts, config: InstallationConfig) {
     this.ports = ports;
@@ -661,6 +663,10 @@ export class InstallationCore {
     const path = new URL(request.url).pathname;
     const sql = operation.sql;
     try {
+      if (path === "/health" && request.method === "GET") {
+        const row = sql.rows<{ completed_at_ms: number }>("SELECT completed_at_ms FROM service_probe_round WHERE id = 1")[0];
+        return json({ lastRoundAtMs: row?.completed_at_ms ?? null });
+      }
       if (path === "/ingest") return await this.ingest(request, operation);
       if (path === "/hosts" && request.method === "GET") return json({ hosts: await this.listHosts() });
       const latest = /^\/hosts\/(h_[0-9a-f]{32})\/latest$/u.exec(path);
@@ -776,7 +782,7 @@ export class InstallationCore {
         try { return json({ services: listServicesWithDeployments(sql, this.now(), error => reportError("deployments.api", error)) }); }
         catch (error) {
           reportError("deployments.api", error);
-          return json({ services: listServices(sql).map(service => ({ ...service, latestDeployment: { status: "unavailable" } })) });
+          return json({ services: listServices(sql).map(service => ({ ...readService(sql, service.name)!, latestDeployment: { status: "unavailable" } })) });
         }
       }
       const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
@@ -847,18 +853,42 @@ export class InstallationCore {
   }
 
   async collectServiceProbes(fetch: ProbeFetch, signal?: AbortSignal): Promise<void> {
-    const operation = this.operationRun();
+    if (this.probingServices) return;
+    this.probingServices = true;
     try {
-      const now = this.now();
-      const targets = listServices(operation.sql).flatMap(service => service.healthUrl === null ? [] : [{ name: service.name, url: service.healthUrl }]);
-      const collected = await Promise.all(targets.map(async target => ({ name: target.name, points: await runProbes({ fetch, probes: [{ name: SERVICE_PROBE_NAME, url: target.url }], now, clock: this.ports.monotonic ?? (() => this.now()) }) })));
-      if (signal?.aborted) return;
-      operation.sql.transaction(() => {
-        for (const entry of collected) upsertPoints(operation.sql, serviceProbeOwner(entry.name), entry.points);
-      });
-      await this.ensureAlarm(this.now());
+      const operation = this.operationRun();
+      try {
+        const now = this.now();
+        const targets = listServices(operation.sql).flatMap(service => service.healthUrl === null ? [] : [{ name: service.name, url: service.healthUrl }]);
+        const collected = await Promise.all(targets.map(async target => ({ ...target, result: await probeService({ ...target, fetch, now, clock: this.ports.monotonic ?? (() => this.now()), ...(signal === undefined ? {} : { signal }) }) })));
+        if (signal?.aborted) return;
+        operation.sql.transaction(() => {
+          const bucketMs = Math.floor(now / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS;
+          for (const entry of collected) {
+            const service = readService(operation.sql, entry.name);
+            if (service?.healthUrl !== entry.url) continue;
+            const owner = serviceProbeOwner(entry.name);
+            const prefix = `probe.${SERVICE_PROBE_NAME}`;
+            const previous = operation.sql.rows<{ metric: string; value: number }>("SELECT metric, value FROM project_samples WHERE project = ? AND bucket_ms = ?", owner, bucketMs);
+            const value = (metric: string, fallback: number) => previous.find(row => row.metric === `${prefix}.${metric}`)?.value ?? fallback;
+            const points = [
+              { metric: `${prefix}.up`, bucketMs, value: Math.min(value("up", 1), entry.result.status === "down" ? 0 : 1) },
+              { metric: `${prefix}.ms`, bucketMs, value: Math.max(value("ms", 0), entry.result.ms) },
+              { metric: `${prefix}.degraded`, bucketMs, value: Math.max(value("degraded", 0), entry.result.status === "degraded" ? 1 : 0) }
+            ];
+            upsertPoints(operation.sql, owner, points);
+            operation.sql.run(`INSERT INTO service_probe_results (service, status, http_status, latency_ms, at_ms, checks, reason) VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT (service) DO UPDATE SET status = excluded.status, http_status = excluded.http_status, latency_ms = excluded.latency_ms, at_ms = excluded.at_ms, checks = excluded.checks, reason = excluded.reason`,
+            entry.name, entry.result.status, entry.result.httpStatus, entry.result.ms, entry.result.atMs, JSON.stringify(entry.result.checks), entry.result.reason);
+          }
+          operation.sql.run("INSERT INTO service_probe_round (id, completed_at_ms) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET completed_at_ms = excluded.completed_at_ms", this.now());
+        });
+        await this.ensureAlarm(this.now());
+      } finally {
+        operation.finish();
+      }
     } finally {
-      operation.finish();
+      this.probingServices = false;
     }
   }
 

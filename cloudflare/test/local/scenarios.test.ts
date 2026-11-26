@@ -26,7 +26,7 @@ async function provision(stack: Stack, name: string): Promise<{ readonly hostId:
   const host = await addHost(stack, `${name}-host`);
   const response = await stack.fetch("/api/v1/admin/services", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, hostIds: [host.hostId] })
+    body: JSON.stringify({ name, hostIds: [host.hostId], healthUrl: `https://${name}.example/health` })
   });
   assert.equal(response.status, 201, await response.clone().text());
   const created = await response.json() as { readonly deployToken: string; readonly ingestToken: string };

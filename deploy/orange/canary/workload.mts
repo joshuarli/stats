@@ -6,6 +6,9 @@ import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../../cloudflare/src/ingest/h
 import { acknowledgedSamples, compareHistory, expectedHistory, type Sample } from "./history.mts";
 import { fixtureSource, manifest } from "../../../cloudflare/test/node/support.ts";
 import type { Stack } from "./stack.mts";
+import { startHealthFixture } from "../../../cloudflare/test/support/health-fixture.ts";
+
+const fixtures = new WeakMap<Stack, Promise<Awaited<ReturnType<typeof startHealthFixture>>>>();
 
 export const spec = { id: "canary-v1", seed: 43829, requestMix: { hostIngest: 1, hostReplay: 1, history: 1, eventIngest: 1, eventReplay: 1, eventConflict: 1, eventRead: 1, capabilities: 1, hosts: 1, services: 1 }, concurrency: 1, payloadSizes: [128] };
 export function corpus() {
@@ -17,11 +20,21 @@ export const workload = { ...spec, corpusSha256: createHash("sha256").update(cor
 
 export async function prepare(stack: Stack, suffix = "") {
   const serviceName = `canary${suffix}`;
+  let fixture = fixtures.get(stack);
+  if (fixture === undefined) {
+    fixture = startHealthFixture(stack.session !== undefined && "containerName" in stack.session ? stack.session.containerName : undefined);
+    fixtures.set(stack, fixture);
+    if (typeof stack.stop === "function") {
+      const stop = stack.stop;
+      let closed = false;
+      stack.stop = async () => { if (closed) return; closed = true; try { await (await fixture!).close(); } finally { await stop(); } };
+    }
+  }
   const post = (path: string, body: unknown) => fetch(stack.origin + path, { method: "POST", headers: { ...stack.headers, "content-type": "application/json" }, body: JSON.stringify(body) });
   const hostResponse = await post("/api/v1/admin/hosts", { name: serviceName });
   if (hostResponse.status !== 201) throw new Error(`host setup: ${hostResponse.status} ${await hostResponse.text()}`);
   const host = await hostResponse.json() as { hostId: string; token: string };
-  const serviceResponse = await post("/api/v1/admin/services", { name: serviceName, hostIds: [host.hostId] });
+  const serviceResponse = await post("/api/v1/admin/services", { name: serviceName, hostIds: [host.hostId], healthUrl: (await fixture).url(serviceName) });
   if (serviceResponse.status !== 201) throw new Error(`service setup: ${serviceResponse.status} ${await serviceResponse.text()}`);
   const service = await serviceResponse.json() as { ingestToken: string };
   return { host, service, serviceName };

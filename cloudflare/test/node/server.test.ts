@@ -46,7 +46,7 @@ async function serve(peer: string | null = null, socket = false, auth?: { readon
   writeFileSync(join(assets, "assets", "app-123.js"), "export {};");
   writeFileSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), "secret");
   symlinkSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), join(assets, "escape.txt"));
-  const listener = statsRequestListener({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), transport: socket ? "unix" : "tcp", auth });
+  const listener = statsRequestListener({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), transport: socket ? "unix" : "tcp", auth, release: "test-release" });
   const socketPath = join(scratchDirectory("sock"), "s.sock");
   const server = createServer((incoming: IncomingMessage, outgoing: ServerResponse) => {
     if (peer !== null) Object.defineProperty(incoming.socket, "remoteAddress", { value: peer, configurable: true });
@@ -85,6 +85,23 @@ function errorCode(reply: Reply): string {
 }
 
 const login = (value: string) => ({ "Tailscale-User-Login": value });
+
+await test("the public Stats endpoint exposes its release and dependency health", async () => {
+  const served = await serve();
+  try {
+    const response = await served.fetch("/health");
+    assert.equal(response.status, 200);
+    assert.equal(response.headers["content-type"], "application/json");
+    assert.equal(response.headers["cache-control"], "no-store");
+    const value = JSON.parse(response.text) as { status: string; service: string; release: string; checks: Record<string, { status: string }> };
+    assert.equal(value.service, "stats");
+    assert.equal(value.release, "test-release");
+    assert.equal(value.status, "degraded");
+    assert.equal(value.checks["installation"]?.status, "ok");
+    assert.equal(value.checks["metrics"]?.status, "ok");
+    assert.equal(value.checks["probes"]?.status, "degraded");
+  } finally { await served.close(); }
+});
 
 await test("a non-loopback peer is rejected before any data is read, even with an allowed Tailscale login", async () => {
   for (const peer of ["203.0.113.7", "::ffff:192.168.1.10", "fd7a:115c:a1e0::1"]) {
@@ -295,7 +312,7 @@ await test("a deploy marker needs only its service token, from any peer and with
     try {
       const host = await served.harness.core.createHost("svc-host");
       assert.ok(host.ok);
-      const created = await served.harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "svc", hostIds: [host.value.hostId] }) }));
+      const created = await served.harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "svc", hostIds: [host.value.hostId], healthUrl: "https://svc.example/health" }) }));
       assert.equal(created.status, 201);
       const { deployToken, ingestToken } = await created.json() as { deployToken: string; ingestToken: string };
       const marker = { markerId: "m1", version: "1.0.0", hostIds: [host.value.hostId] };

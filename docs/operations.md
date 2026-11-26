@@ -604,7 +604,7 @@ umask 077
 mkdir -p .work/credentials
 curl -sS http://threadripper.tailcf741.ts.net:18790/api/v1/admin/services \
   -H 'Content-Type: application/json' \
-  -d '{"name":"stats-node","hostIds":["h_..."]}' \
+  -d '{"name":"stats-node","hostIds":["h_..."],"healthUrl":"https://stats-node.example.com/health"}' \
   > .work/credentials/stats-node-deploy.json
 ```
 
@@ -680,9 +680,9 @@ service's cgroup in both windows, `service.cpu`, `service.memory`, and
 stay in the response after the rest, marked `supersededBy`, so a policy on a
 host metric is still judged and carries a reason naming the better measure.
 
-The Node server probes each service's `healthUrl` every five minutes. A Node
-container with no network sees every probe fail, so its probe failure share is
-100 percent in both windows; leave `healthUrl` off for such a service.
+The Node server probes each service's `healthUrl` every 60 seconds. Configure a
+reachable endpoint for every service. A container without access to an
+endpoint records the probe as down.
 
 ## Verified environments
 

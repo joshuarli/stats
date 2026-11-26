@@ -50,7 +50,7 @@ try {
     const post = (path, body, token) => fetch(session.origin + path, { method: 'POST', headers: { ...headers, ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
     const hostResponse = await post('/api/v1/admin/hosts', { name: 'captured-host' }); assert.equal(hostResponse.status, 201);
     const host = await hostResponse.json();
-    const serviceResponse = await post('/api/v1/admin/services', { name: 'stats', hostIds: [host.hostId] }); assert.equal(serviceResponse.status, 201);
+    const serviceResponse = await post('/api/v1/admin/services', { name: 'stats', hostIds: [host.hostId], healthUrl: `${session.origin}/health` }); assert.equal(serviceResponse.status, 201);
     const service = await serviceResponse.json();
     const maxBytes = Math.max(...events.map(event => Buffer.byteLength(JSON.stringify(event))));
     const size = Math.min(64, Math.floor(60000 / (maxBytes + 1))); assert.ok(size >= 1);

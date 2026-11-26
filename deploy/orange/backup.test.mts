@@ -8,6 +8,7 @@ import { decodeAck } from "../../cloudflare/src/ingest/ack-decode.ts";
 import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../cloudflare/src/ingest/http.ts";
 import { startGateway, type LocalGateway } from "../../cloudflare/local/gateway.ts";
 import { fixtureBytes, fixtureSource, manifest, NOW_MS, withHost } from "../../cloudflare/test/node/support.ts";
+import { startHealthFixture } from "../../cloudflare/test/support/health-fixture.ts";
 import { generate } from "./generate.mts";
 import { freePort, startSession, type Session } from "./session.mts";
 
@@ -54,6 +55,7 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
   const seqs = fixtureSource(batch.source).samples.map(sample => BigInt(String((sample as { seq: unknown }).seq)));
   let source: Deployment | undefined;
   let target: Deployment | undefined;
+  const health = await startHealthFixture();
   try {
     source = await deploy(join(root, "source"), "source");
     const origin = source.gateway.origin;
@@ -63,7 +65,7 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
     const frame = withHost(fixtureBytes(batch.frame), host.hostId);
     const ingest = (base: string) => fetch(`${base}${INGEST_PATH}`, { method: "POST", headers: { Authorization: `Bearer ${host.token}`, "Content-Type": INGEST_MEDIA_TYPE }, body: frame });
     assert.equal(decodeAck(new Uint8Array(await (await ingest(origin)).arrayBuffer()), seqs).accepted, seqs.length);
-    const service = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "backup-svc", hostIds: [host.hostId] }) });
+    const service = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "backup-svc", hostIds: [host.hostId], healthUrl: health.url("backup-svc") }) });
     assert.equal(service.status, 201);
     const { ingestToken } = await service.json() as { ingestToken: string };
     const applicationNow = Date.now();
@@ -134,6 +136,7 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
   } finally {
     await source?.stop();
     await target?.stop();
+    await health.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

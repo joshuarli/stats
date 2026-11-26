@@ -21,17 +21,17 @@ await test("build consumers share complete generations and recover from edits, f
     assert.doesNotMatch(readFileSync(unchanged.logPath, "utf8"), /building ssr environment/u);
     assert.equal(record("stats").output, first.output);
 
-    const source = join(workspace.root, "src/core/http.ts");
+    const source = join(workspace.root, "src/core/health.ts");
     const original = readFileSync(source, "utf8");
     writeFileSync(join(workspace.root, "src/core/dev-probe.ts"), 'export const devProbe = "untracked";\n');
-    writeFileSync(source, `import { devProbe } from "./dev-probe.ts";\n${original.replace('{ ok: true, service: "stats" }', '{ ok: true, service: "stats", devProbe }')}`);
+    writeFileSync(source, `import { devProbe } from "./dev-probe.ts";\n${original.replace('...(options.release === undefined ? {} : { release: options.release })', 'release: devProbe')}`);
     await build("dirty");
     const dirty = record("stats");
     assert.notEqual(dirty.identity, first.identity);
     assert.equal(record("observe").identity, observe.identity);
     const stack = await startStack({ nowMs: null, statsOutput: join(dirty.output, "v0/workers/default"), observeOutput: join(observe.output, "v0/workers/default") });
     try {
-      assert.equal((await (await stack.anonymous("/health")).json() as { devProbe: string }).devProbe, "untracked");
+      assert.equal((await (await stack.anonymous("/health")).json() as { release: string }).release, "untracked");
       writeFileSync(source, "export const = ;");
       await assert.rejects(build("failure"), /exited/u);
       assert.equal(record("stats").output, dirty.output);

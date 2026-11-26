@@ -22,8 +22,9 @@ async function createHost(harness: Harness, name: string): Promise<{ hostId: str
 }
 
 async function createService(harness: Harness, body: Record<string, unknown>): Promise<string> {
-  const response = await harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }));
+  const response = await harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ healthUrl: "https://fixture.example/health", ...body }) }));
   assert.equal(response.status, 201);
+  if (!("healthUrl" in body)) harness.db.prepare("UPDATE services SET health_url = NULL WHERE name = ?").run(String(body["name"]));
   return (await response.json() as { deployToken: string }).deployToken;
 }
 
@@ -248,7 +249,7 @@ await test("probe results land in the comparison, and a failing probe after the 
     const probeFetch: ProbeFetch = async (url) => {
       fetched.push(url);
       harness.setNow(currentNow + latencyMs);
-      return { status, body: null };
+      return status === 200 ? Response.json({ status: "ok", service: "probed", checks: {} }) : new Response(null, { status });
     };
     for (const [window, probeStatus, probeLatency] of [[before, 200, 40], [after, 503, 400]] as const) {
       status = probeStatus;
@@ -294,7 +295,7 @@ await test("the service comparison route rejects a bad id, window, method, and u
   }
 });
 
-await test("the Node server probes services on the five-minute boundary with the injected clock and fetch, and stops on close", async () => {
+await test("the Node server probes services on the one-minute boundary with the injected clock and fetch, and stops on close", async () => {
   const start = Math.floor(NOW_MS / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS + 60_000;
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: start });
   const directory = scratchDirectory("probe-schedule");
@@ -305,7 +306,7 @@ await test("the Node server probes services on the five-minute boundary with the
     clock: { now: () => Date.now() },
     probeFetch: async () => {
       calls.push(Date.now());
-      return { status: 200, body: null };
+      return Response.json({ status: "ok", service: "probe-me", checks: {} });
     }
   });
   try {
@@ -313,14 +314,14 @@ await test("the Node server probes services on the five-minute boundary with the
     assert.ok(host.ok);
     const created = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "probe-me", hostIds: [host.value.hostId], healthUrl: "https://probe-me.example.com/up" }) }));
     assert.equal(created.status, 201);
-    assert.equal(nextProbeAtMs(start), start - 60_000 + DEPLOYMENT_BUCKET_MS);
-    mock.timers.tick(DEPLOYMENT_BUCKET_MS - 60_000 - 1);
+    assert.equal(nextProbeAtMs(start), start + 60_000);
+    mock.timers.tick(60_000 - 1);
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.deepEqual(calls, []);
     mock.timers.tick(1);
     await new Promise<void>(resolve => setImmediate(resolve));
-    assert.deepEqual(calls, [start - 60_000 + DEPLOYMENT_BUCKET_MS]);
-    mock.timers.tick(DEPLOYMENT_BUCKET_MS);
+    assert.deepEqual(calls, [start + 60_000]);
+    mock.timers.tick(60_000);
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(calls.length, 2);
     installation.close();
@@ -352,7 +353,7 @@ await test("shutdown cancels and joins an active service probe before closing it
     assert.ok(host.ok);
     const created = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "probe-me", hostIds: [host.value.hostId], healthUrl: "https://probe-me.example.com/up" }) }));
     assert.equal(created.status, 201);
-    mock.timers.tick(DEPLOYMENT_BUCKET_MS - 60_000);
+    mock.timers.tick(60_000);
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.ok(signal);
     await installation.shutdown();

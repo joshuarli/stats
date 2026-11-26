@@ -1,7 +1,6 @@
 import { MARKER_ID, MARKER_VERSION, HOST_ID, type Service, type ServiceDeploymentHistory, type ServiceMarker } from "../../core/installation/services.ts";
 import { decodeService, decodeServiceDeploymentHistory, decodeServiceMarker, decodeServices } from "../../deployments/service-decode.ts";
 import type { Deployment } from "../../deployments/model.ts";
-import { isUp } from "../../projects/probes.ts";
 import { credentialFileExists, credentialToken, prepareCredentialWrite, readCredentialJson, writeCredentialJson } from "../credential-file.ts";
 import { authError, CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import { REQUEST_TIMEOUT_MS } from "../http.ts";
@@ -16,7 +15,6 @@ const MAX_MESSAGE_CHARS = 1000;
 const SERVICE_TOKEN = /^nft_[A-Za-z0-9_-]{43}$/u;
 const AT_MS = /^[0-9]{1,15}$/u;
 const UNIT = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/u;
-const HEALTH_TIMEOUT_MS = 5_000;
 
 export interface DeployMarkPayload {
   readonly created: boolean;
@@ -123,6 +121,7 @@ export interface ServiceCheckPayload {
   readonly hostIds: readonly string[];
   readonly latest: LatestServiceMarker | null;
   readonly probe: ServiceProbe;
+  readonly health: Service["health"];
 }
 
 function recordObject(value: unknown): Record<string, unknown> {
@@ -178,23 +177,6 @@ function latestServiceMarker(history: ServiceDeploymentHistory): LatestServiceMa
     message: deployment.message,
     hostIds: marker.hostIds
   };
-}
-
-async function probeHealth(context: CommandContext, healthUrl: string | null): Promise<ServiceProbe> {
-  if (healthUrl === null) return { state: "unavailable", status: null, ms: null, detail: "no health URL configured" };
-  const started = performance.now();
-  const timeout = AbortSignal.timeout(HEALTH_TIMEOUT_MS);
-  try {
-    const response = await fetch(healthUrl, { method: "GET", redirect: "manual", cache: "no-store", signal: AbortSignal.any([context.signal, timeout]) });
-    const ms = Math.max(0, Math.round(performance.now() - started));
-    if (response.body !== null) await response.body.cancel().catch(() => undefined);
-    return isUp(response.status)
-      ? { state: "up", status: response.status, ms, detail: "answered" }
-      : { state: "down", status: response.status, ms, detail: "answered with a failing status" };
-  } catch {
-    if (context.signal.aborted) throw transportError("cancelled", "request cancelled");
-    return { state: "unavailable", status: null, ms: Math.max(0, Math.round(performance.now() - started)), detail: timeout.aborted ? `no response within ${HEALTH_TIMEOUT_MS} ms` : "no response" };
-  }
 }
 
 function isHtml(response: Response, body: Uint8Array): boolean {
@@ -322,7 +304,7 @@ export const servicesCommand = defineCommand<ServicesPayload>({
   },
   render({ services }) {
     if (services.length === 0) return ["no services configured"];
-    return table([["service", "hosts", "unit", "health url"], ...services.map(item => [item.name, String(item.hostIds.length), item.unit ?? "-", item.healthUrl ?? "-"])]);
+    return table([["service", "hosts", "unit", "health", "health url"], ...services.map(item => [item.name, String(item.hostIds.length), item.unit ?? "-", item.health?.status === "down" ? `down: ${item.health.reason ?? "health check failed"}` : item.health?.status ?? (item.healthUrl === null ? "missing" : "unprobed"), item.healthUrl ?? "-"])]);
   }
 });
 
@@ -374,11 +356,11 @@ export const serviceCreateCommand = defineCommand<ServiceCreatePayload>({
   options: {
     name: { type: "string", placeholder: "NAME", required: true, description: "service name: 1-32 lowercase letters, digits, or hyphens, starting with a letter" },
     host: { type: "string", placeholder: "ID[,ID...]", required: true, description: "host ids the service runs on, comma-separated" },
-    "health-url": { type: "string", placeholder: "URL", description: "https URL, or an http URL on the tailnet, probed for health" },
+    "health-url": { type: "string", placeholder: "URL", required: true, description: "https URL, or an http URL on the tailnet or loopback, probed for health" },
     unit: { type: "string", placeholder: "UNIT", description: "service manager unit or cgroup name shown on the service page" },
     "credential-file": { type: "string", placeholder: "FILE", required: true, description: "new file to hold {name, hostIds, deployToken, ingestToken}, created mode 0600; never passed in argv" }
   },
-  examples: ["statsctl service create --name stats-node --host h_0123456789abcdef0123456789abcdef --credential-file .work/credentials/stats-node.json"],
+  examples: ["statsctl service create --name stats-node --host h_0123456789abcdef0123456789abcdef --health-url https://stats.example/health --credential-file .work/credentials/stats-node.json"],
   limitations: [
     "The server returns both credentials once; they cannot be read back from the service.",
     "If the file is lost, rotate both credentials with `statsctl service token rotate`; the service itself is not recreated."
@@ -388,14 +370,14 @@ export const serviceCreateCommand = defineCommand<ServiceCreatePayload>({
     if (name === undefined || !PROJECT_ID.test(name)) throw usageError("--name must be 1-32 lowercase letters, digits, or hyphens, starting with a letter");
     const hostIds = hostList(context.option("host") ?? "");
     const healthUrl = context.option("health-url");
-    if (healthUrl !== undefined && healthUrl.length > 2048) throw usageError("--health-url must be at most 2048 characters");
+    if (healthUrl === undefined || healthUrl.length === 0 || healthUrl.length > 2048) throw usageError("--health-url is required and must be at most 2048 characters");
     const unit = context.option("unit");
     if (unit !== undefined && !UNIT.test(unit)) throw usageError("--unit must be 1-128 letters, digits, or ._@- starting with a letter or digit");
     const prepared = prepareCredentialWrite(requiredFile(context, "credential-file"), { replace: false });
     const created = await context.http.postJson("/api/v1/admin/services", {
       name,
       hostIds,
-      ...(healthUrl === undefined ? {} : { healthUrl }),
+      healthUrl,
       ...(unit === undefined ? {} : { unit })
     }, decodeCreatedService);
     let credentialFile: string;
@@ -424,15 +406,14 @@ export const serviceUpdateCommand = defineCommand<Service>({
   summary: "change a service's hosts, health URL, or unit",
   description: [
     "MUTATION: changes one service through PATCH /api/v1/admin/services/NAME. Options that are not given keep their stored value.",
-    "Credentials and deployment markers are unchanged. The Node server and the OpenOrange target probe the health URL every five minutes."
+    "Credentials and deployment markers are unchanged. The Node server and the OpenOrange target probe the health URL."
   ],
   access: "mutation",
   targets: ["orange", "node"],
   options: {
     service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" },
     host: { type: "string", placeholder: "ID[,ID...]", description: "replace the host ids the service runs on, comma-separated" },
-    "health-url": { type: "string", placeholder: "URL", description: "https URL, or an http URL on the tailnet, probed for health" },
-    "clear-health-url": { type: "boolean", description: "remove the health URL so the service is not probed" },
+    "health-url": { type: "string", placeholder: "URL", description: "https URL, or an http URL on the tailnet or loopback, probed for health" },
     unit: { type: "string", placeholder: "UNIT", description: "service manager unit or cgroup name shown on the service page" }
   },
   examples: ["statsctl service update --service discover --health-url https://hq.17166969.xyz/healthz"],
@@ -440,8 +421,6 @@ export const serviceUpdateCommand = defineCommand<Service>({
   async run(context) {
     const name = requireService(context);
     const healthUrl = context.option("health-url");
-    const clear = context.flag("clear-health-url");
-    if (healthUrl !== undefined && clear) throw usageError("--health-url and --clear-health-url cannot be combined");
     if (healthUrl !== undefined && healthUrl.length > 2048) throw usageError("--health-url must be at most 2048 characters");
     const unit = context.option("unit");
     if (unit !== undefined && !UNIT.test(unit)) throw usageError("--unit must be 1-128 letters, digits, or ._@- starting with a letter or digit");
@@ -449,10 +428,9 @@ export const serviceUpdateCommand = defineCommand<Service>({
     const body = {
       ...(host === undefined ? {} : { hostIds: hostList(host) }),
       ...(healthUrl === undefined ? {} : { healthUrl }),
-      ...(clear ? { healthUrl: null } : {}),
       ...(unit === undefined ? {} : { unit })
     };
-    if (Object.keys(body).length === 0) throw usageError("give at least one of --host, --health-url, --clear-health-url, or --unit");
+    if (Object.keys(body).length === 0) throw usageError("give at least one of --host, --health-url, or --unit");
     const updated = await context.http.patchJson(`/api/v1/admin/services/${encodeURIComponent(name)}`, body, decodeService);
     if (updated.name !== name) throw transportError("contract", `the update answered for service ${updated.name}`);
     return { payload: updated };
@@ -479,7 +457,7 @@ export const serviceInspectCommand = defineCommand<ServiceInspectPayload>({
   async run(context) {
     const name = requireService(context);
     const [service, history] = await Promise.all([readServiceConfig(context, name), readServiceHistory(context, name)]);
-    return { payload: { service, latest: latestServiceMarker(history), markers: history.markers.length } };
+    return { payload: { service, latest: latestServiceMarker(history), markers: history.markers.length }, exit: service.health?.status === "down" || service.health?.status === "missing" || service.healthUrl === null ? EXIT.regressed : EXIT.ok };
   },
   render({ service, latest, markers }) {
     const lines = [
@@ -488,6 +466,7 @@ export const serviceInspectCommand = defineCommand<ServiceInspectPayload>({
         ["hosts", service.hostIds.join(" ")],
         ["unit", service.unit ?? "-"],
         ["health url", service.healthUrl ?? "-"],
+        ["health", service.health?.status === "down" ? `down: ${service.health.reason ?? "health check failed"}` : service.health?.status ?? (service.healthUrl === null ? "missing" : "unprobed")],
         ["created", timeText(service.createdAtMs)],
         ["markers", String(markers)]
       ])
@@ -597,23 +576,25 @@ export const serviceCheckCommand = defineCommand<ServiceCheckPayload>({
   name: "service check",
   summary: "check a service's health URL, latest marker, and probe state",
   description: [
-    "Reads the service and its deployment history, then probes the configured health URL directly with a 5 second timeout and no credentials.",
-    "The probe is up for a 2xx or 3xx response, down for any other response, and unavailable when the URL is missing or does not answer.",
-    "Exit 0 when the probe is up and a marker exists, 5 when the health URL or marker is missing or the probe does not answer, and 7 when the probe answers with a failing status."
+    "Reads the service, its latest recorded health probe, and its deployment history.",
+    "Exit 0 when the probe is ok or degraded and a marker exists, 5 when the probe or marker is pending, and 7 when health is down or missing."
   ],
   access: "read",
   targets: ["orange", "node"],
   options: { service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" } },
   examples: ["statsctl service check --service stats-node", "statsctl service check --service stats-node --json"],
-  limitations: ["The probe is one request from this machine; it does not read the server's recorded probe series."],
+  limitations: ["The health result is the latest probe recorded by the server."],
   async run(context) {
     const name = requireService(context);
     const [service, history] = await Promise.all([readServiceConfig(context, name), readServiceHistory(context, name)]);
-    const probe = await probeHealth(context, service.healthUrl);
+    const health: NonNullable<Service["health"]> = service.health ?? (service.healthUrl === null ? { status: "missing" } : { status: "unprobed" });
+    const probe: ServiceProbe = health.status === "unprobed" || health.status === "missing"
+      ? { state: health.status === "missing" ? "down" : "unavailable", status: null, ms: null, detail: health.status }
+      : { state: health.status === "down" ? "down" : "up", status: health.httpStatus, ms: health.ms, detail: health.reason ?? health.status };
     const latest = latestServiceMarker(history);
     const exit = probe.state === "down" ? EXIT.regressed : probe.state === "unavailable" || latest === null ? EXIT.pending : EXIT.ok;
     return {
-      payload: { name: service.name, healthUrl: service.healthUrl, unit: service.unit, hostIds: service.hostIds, latest, probe },
+      payload: { name: service.name, healthUrl: service.healthUrl, unit: service.unit, hostIds: service.hostIds, latest, probe, health },
       exit
     };
   },

@@ -110,7 +110,7 @@ function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (
     <tr>
       <td><EntityCell marker={<span class="status-dot tone-neutral" aria-hidden="true" />} name={props.service.name} href={routeWithRange(`#/service/${props.service.name}`, range())} id={props.service.unit ?? props.service.name} /></td>
       <td class="numeric">{props.service.hostIds.length}</td>
-      <td>{props.service.healthUrl === null ? <span class="cell-note">unavailable, no health URL</span> : <span class="mono services-url" title={props.service.healthUrl}>{props.service.healthUrl}</span>}</td>
+      <td><span class="cell-stack"><span>{props.service.health?.status === "down" ? `down: ${props.service.health.reason ?? "health check failed"}` : props.service.health?.status ?? (props.service.healthUrl === null ? "missing" : "unprobed")}</span><span class="mono services-url" title={props.service.healthUrl ?? ""}>{props.service.healthUrl ?? ""}</span></span></td>
       <td>
         <Show when={latest()} fallback={props.service.latestDeployment?.status === "none" ? <span class="cell-note">none recorded</span> : <span class="cell-note" role="status">deployments unavailable</span>}>{deployment => (
           <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>

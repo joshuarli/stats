@@ -12,6 +12,20 @@ const HOUR = 3_600_000;
 const LEVELS: HostLevels = { cpuPercent: 20, memoryUsedPercent: 40, netBytesPerSec: 1_000_000, diskBytesPerSec: 500_000, cpuPressure: 1 };
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
+await test("service registration requires a health URL and updates cannot clear it", async () => {
+  const harness = openHarness();
+  try {
+    const host = await harness.core.createHost("lisa");
+    assert.ok(host.ok);
+    const create = (health: object) => harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "web", hostIds: [host.value.hostId], ...health }) }));
+    assert.equal((await create({})).status, 400);
+    assert.equal((await create({ healthUrl: null })).status, 400);
+    assert.equal((await create({ healthUrl: "https://web.example.com/health" })).status, 201);
+    const response = await harness.core.fetch(new Request("https://installation/admin/services/web", { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ healthUrl: null }) }));
+    assert.equal(response.status, 400);
+  } finally { harness.close(); }
+});
+
 await test("host service resources report each cgroup's CPU cores, memory and I/O per step, leaving unreported steps null", async () => {
   const harness = openHarness();
   try {
@@ -53,13 +67,13 @@ await test("host service resources report each cgroup's CPU cores, memory and I/
   }
 });
 
-await test("a service update changes only the given fields, clears a health URL with null, and rejects unknown hosts without writing", async () => {
+await test("a service update changes only the given fields and rejects unknown hosts without writing", async () => {
   const harness = openHarness();
   try {
     const created = await harness.core.createHost("lisa");
     assert.ok(created.ok);
     const hostId = created.value.hostId;
-    const service = await harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "discover", hostIds: [hostId], unit: "oo-app.discover" }) }));
+    const service = await harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "discover", hostIds: [hostId], unit: "oo-app.discover", healthUrl: "https://discover.example.com/health" }) }));
     assert.equal(service.status, 201);
     const patch = (body: unknown, name = "discover") => harness.core.fetch(new Request(`https://installation/admin/services/${name}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) }));
 
@@ -74,9 +88,9 @@ await test("a service update changes only the given fields, clears a health URL 
     assert.equal((await patch({ unit: null }, "missing")).status, 404);
 
     const cleared = await patch({ healthUrl: null });
-    assert.equal(cleared.status, 200);
+    assert.equal(cleared.status, 400);
     const read = await (await harness.core.fetch(new Request("https://installation/services/discover"))).json() as Service;
-    assert.equal(read.healthUrl, null);
+    assert.equal(read.healthUrl, "https://hq.example.com/healthz");
     assert.deepEqual(read.hostIds, [hostId]);
     assert.equal(read.unit, "oo-app.discover");
   } finally {
@@ -84,35 +98,32 @@ await test("a service update changes only the given fields, clears a health URL 
   }
 });
 
-await test("the service list reports the latest fresh health probe, and unprobed when there is no URL or no recent result", async () => {
-  const directory = scratchDirectory("service-health");
+await test("the service list reports latest health and missing legacy URLs", async () => {
+  const harness = openHarness("[]", { probesServices: true });
   let now = NOW_MS;
   let status = 200;
-  const installation = openNodeInstallation({
-    path: `${directory}/stats.sqlite`,
-    projects: "[]",
-    clock: { now: () => now },
-    probeFetch: async () => ({ status, body: null })
-  });
   try {
-    const host = await installation.core.createHost("lisa");
+    const host = await harness.core.createHost("lisa");
     assert.ok(host.ok);
-    for (const body of [{ name: "probed", hostIds: [host.value.hostId], healthUrl: "https://probed.example.com/up" }, { name: "silent", hostIds: [host.value.hostId] }]) {
-      assert.equal((await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }))).status, 201);
+    for (const body of [{ name: "probed", hostIds: [host.value.hostId], healthUrl: "https://probed.example.com/up" }, { name: "silent", hostIds: [host.value.hostId], healthUrl: "https://silent.example.com/up" }]) {
+      assert.equal((await harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }))).status, 201);
     }
-    const health = async () => Object.fromEntries((await (await installation.core.fetch(new Request("https://installation/services"))).json() as { services: Service[] }).services.map(service => [service.name, service.health?.status]));
+    harness.db.prepare("UPDATE services SET health_url = NULL WHERE name = ?").run("silent");
+    const health = async () => Object.fromEntries((await (await harness.core.fetch(new Request("https://installation/services"))).json() as { services: Service[] }).services.map(service => [service.name, service.health?.status]));
 
-    assert.deepEqual(await health(), { probed: "unprobed", silent: "unprobed" });
-    await installation.core.collectServiceProbes(async () => ({ status, body: null }));
-    assert.deepEqual(await health(), { probed: "up", silent: "unprobed" });
+    assert.deepEqual(await health(), { probed: "unprobed", silent: "missing" });
+    await harness.core.collectServiceProbes(async () => status === 200 ? Response.json({ status: "ok", service: "probed", checks: {} }) : new Response(null, { status }));
+    assert.deepEqual(await health(), { probed: "ok", silent: "missing" });
     status = 503;
     now += DEPLOYMENT_BUCKET_MS;
-    await installation.core.collectServiceProbes(async () => ({ status, body: null }));
-    assert.deepEqual(await health(), { probed: "down", silent: "unprobed" });
+    harness.setNow(now);
+    await harness.core.collectServiceProbes(async () => status === 200 ? Response.json({ status: "ok", service: "probed", checks: {} }) : new Response(null, { status }));
+    assert.deepEqual(await health(), { probed: "down", silent: "missing" });
     now += HOUR;
-    assert.deepEqual(await health(), { probed: "unprobed", silent: "unprobed" });
+    harness.setNow(now);
+    assert.deepEqual(await health(), { probed: "down", silent: "missing" });
   } finally {
-    installation.close();
+    harness.close();
   }
 });
 
@@ -128,7 +139,7 @@ await test("service health history buckets probe results into bars, counting fai
     const fromMs = now;
     for (const code of [200, 200, 503, 200]) {
       status = code;
-      await installation.core.collectServiceProbes(async () => ({ status, body: null }));
+      await installation.core.collectServiceProbes(async () => status === 200 ? Response.json({ status: "ok", service: "web", checks: {} }) : new Response(null, { status }));
       now += DEPLOYMENT_BUCKET_MS;
     }
     const read = async (search: string) => installation.core.fetch(new Request(`https://installation/services/web/health?${search}`));

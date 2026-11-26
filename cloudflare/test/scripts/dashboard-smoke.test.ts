@@ -28,7 +28,7 @@ body=; status=; type=
 case "$url" in
   */health)
     printf 'content-type: application/json\\r\\ncontent-security-policy: default-src '"'"'self'"'"'; frame-ancestors '"'"'none'"'"'\\r\\nx-frame-options: DENY\\r\\nx-content-type-options: nosniff\\r\\ncache-control: no-store\\r\\n' > "$hdr"
-    body='{"ok":true,"service":"stats"}'
+    body='{"status":"ok","service":"stats","checks":{}}'
     status=200
     ;;
   */ingest/v1/batches)

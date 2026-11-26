@@ -10,7 +10,7 @@ await test("the same external batch reads back normalized on workerd", async () 
     const created = await harness.stats("/api/v1/admin/services", {
       method: "POST",
       headers: await accessHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [host.hostId] })
+      body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [host.hostId], healthUrl: "https://tansu.example/health" })
     });
     assert.equal(created.status, 201, await created.clone().text());
     const { ingestToken, deployToken } = await created.json() as { ingestToken: string; deployToken: string };

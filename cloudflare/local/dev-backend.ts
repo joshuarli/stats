@@ -2,6 +2,7 @@ import { generate } from "../../deploy/orange/generate.mts";
 import { freePort, startSession, type Session } from "../../deploy/orange/session.mts";
 import { encodeFrame, type SourceBatch } from "../src/ingest/encode.ts";
 import { readFileSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { resolve } from "node:path";
 import { gatewaySecret, startGateway, type LocalGateway } from "./gateway.ts";
 
@@ -21,11 +22,13 @@ export interface BackendReady {
 export type BackendMessage = BackendReady | { readonly event: "backend-error" };
 let session: Session | undefined;
 let gateway: LocalGateway | undefined;
+let healthServer: Server | undefined;
 let serial = Promise.resolve();
 let stopping = false;
 const secret = gatewaySecret();
 
 async function dispose(): Promise<void> {
+  if (healthServer !== undefined) { healthServer.closeAllConnections(); await new Promise<void>(done => healthServer!.close(() => done())); healthServer = undefined; }
   await gateway?.close();
   gateway = undefined;
   await session?.stop();
@@ -39,6 +42,10 @@ async function activate(options: BackendStart): Promise<void> {
   writeFileSync(generated.stats, JSON.stringify(descriptor), { mode: 0o600 });
   session = await startSession(options.state, await freePort());
   gateway = await startGateway(session.origin, secret);
+  healthServer = createServer((_request, response) => { response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); response.end(JSON.stringify({ status: "ok", service: "local-service", checks: {} })); });
+  await new Promise<void>(done => healthServer!.listen(0, "127.0.0.1", done));
+  const address = healthServer.address();
+  if (address === null || typeof address === "string") throw new Error("health fixture did not listen");
   if (options.initialize) {
     const hosts = await fetch(`${gateway.origin}/api/v1/hosts`);
     if (!hosts.ok) throw new Error(`hosts answered ${hosts.status}`);
@@ -52,9 +59,11 @@ async function activate(options: BackendStart): Promise<void> {
       const samples = source.samples.map(sample => ({ ...sample, atMs: (BigInt(String(sample["atMs"])) + offset).toString() }));
       const ingested = await fetch(`${gateway.origin}/ingest/v2/batches`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/vnd.stats.ingest.v2" }, body: encodeFrame({ ...source, hostId: host.hostId, samples }) });
       if (ingested.status !== 200) throw new Error(`fixture ingest answered ${ingested.status}: ${await ingested.text()}`);
-      const service = await fetch(`${gateway.origin}/api/v1/admin/services`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "local-service", hostIds: [host.hostId] }) });
+      const service = await fetch(`${gateway.origin}/api/v1/admin/services`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "local-service", hostIds: [host.hostId], healthUrl: `http://127.0.0.1:${address.port}/health` }) });
       if (service.status !== 201) throw new Error(`service creation answered ${service.status}`);
     }
+    const updated = await fetch(`${gateway.origin}/api/v1/admin/services/local-service`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ healthUrl: `http://127.0.0.1:${address.port}/health` }) });
+    if (!updated.ok) throw new Error(`service update answered ${updated.status}`);
   }
   if (stopping) return;
   process.send?.({ event: "backend-ready", origin: gateway.origin, workerOrigin: session.origin, pid: session.child.pid!, producers: [] } satisfies BackendReady);

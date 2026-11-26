@@ -72,7 +72,7 @@ const marked = {
 
 await test("service check reports an up probe, the latest marker, and sends no credential", async () => {
   const target = await fixture();
-  target.service = { name: "web", hostIds: [HOST_A, HOST_B], healthUrl: `${target.origin}/health`, unit: "web.service", createdAtMs: 1_700_000_000_000 };
+  target.service = { name: "web", hostIds: [HOST_A, HOST_B], healthUrl: `${target.origin}/health`, unit: "web.service", createdAtMs: 1_700_000_000_000, health: { status: "ok", atMs: 1_700_000_000_000, httpStatus: 200, ms: 2, checks: [], reason: null } };
   target.history = marked;
   try {
     const run = await runCli(["service", "check", "--service", "web", "--origin", target.origin, "--json"], {});
@@ -89,8 +89,7 @@ await test("service check reports an up probe, the latest marker, and sends no c
     const probe = target.seen.filter(item => item.url === "/health");
     assert.equal(api.length, 2);
     assert.ok(api.every(item => item.headers["cf-access-token"] === undefined && item.headers["authorization"] === undefined));
-    assert.equal(probe.length, 1);
-    assert.equal(probe[0]?.headers["cf-access-token"], undefined);
+    assert.equal(probe.length, 0);
 
     const text = await runCli(["service", "check", "--service", "web", "--origin", target.origin], {});
     assert.equal(text.code, 0, text.stdout + text.stderr);
@@ -103,38 +102,37 @@ await test("service check reports an up probe, the latest marker, and sends no c
 
 await test("service check reports a failing probe as regressed", async () => {
   const target = await fixture();
-  target.service = { name: "web", hostIds: [HOST_A], healthUrl: `${target.origin}/health`, unit: null, createdAtMs: 1_700_000_000_000 };
+  target.service = { name: "web", hostIds: [HOST_A], healthUrl: `${target.origin}/health`, unit: null, createdAtMs: 1_700_000_000_000, health: { status: "down", atMs: 1_700_000_000_000, httpStatus: 503, ms: 2, checks: [], reason: "http 503" } };
   target.history = marked;
-  target.probeStatus = 503;
   try {
     const run = await runCli(["service", "check", "--service", "web", "--origin", target.origin, "--json"], {});
     assert.equal(run.code, 7, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { probe: { state: string; status: number; detail: string } } }).payload;
     assert.equal(payload.probe.state, "down");
     assert.equal(payload.probe.status, 503);
-    assert.match(payload.probe.detail, /failing status/u);
+    assert.match(payload.probe.detail, /http 503/u);
   } finally {
     await target.close();
   }
 });
 
-await test("service check treats a missing health URL, a missing marker, and an unreachable URL as pending", async () => {
+await test("service check fails missing health and reports pending markers or unprobed services", async () => {
   const unconfigured = await fixture();
   unconfigured.service = { name: "web", hostIds: [HOST_A], healthUrl: null, unit: null, createdAtMs: 1_700_000_000_000 };
   unconfigured.history = marked;
   try {
     const run = await runCli(["service", "check", "--service", "web", "--origin", unconfigured.origin, "--json"], {});
-    assert.equal(run.code, 5, run.stdout + run.stderr);
+    assert.equal(run.code, 7, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { probe: { state: string; detail: string } } }).payload;
-    assert.equal(payload.probe.state, "unavailable");
-    assert.match(payload.probe.detail, /no health URL/u);
+    assert.equal(payload.probe.state, "down");
+    assert.match(payload.probe.detail, /missing/u);
     assert.equal(unconfigured.seen.some(item => item.url === "/health"), false);
   } finally {
     await unconfigured.close();
   }
 
   const unmarked = await fixture();
-  unmarked.service = { name: "web", hostIds: [HOST_A], healthUrl: `${unmarked.origin}/health`, unit: null, createdAtMs: 1_700_000_000_000 };
+  unmarked.service = { name: "web", hostIds: [HOST_A], healthUrl: `${unmarked.origin}/health`, unit: null, createdAtMs: 1_700_000_000_000, health: { status: "degraded", atMs: 1_700_000_000_000, httpStatus: 200, ms: 2, checks: [], reason: null } };
   try {
     const run = await runCli(["service", "check", "--service", "web", "--origin", unmarked.origin, "--json"], {});
     assert.equal(run.code, 5, run.stdout + run.stderr);

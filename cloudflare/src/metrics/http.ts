@@ -3,6 +3,10 @@ import type { MetricStoreCore } from "./store-core.ts";
 
 export async function handleMetricRequest(request: Request, store: MetricStoreCore): Promise<Response> {
   const url = new URL(request.url);
+  if (request.method === "GET" && url.pathname === "/health") {
+    store.db.rows("SELECT key FROM metric_meta LIMIT 1");
+    return Response.json({ status: "ok" });
+  }
   if (request.method === "POST" && url.pathname === "/batches") {
     let batch;
     try {

@@ -96,6 +96,7 @@ await test("service catalog remains available when deployment history is absent"
     const body = await response.text();
     const services = decodeServices(JSON.parse(body));
     assert.deepEqual(services.map(service => [service.name, service.latestDeployment]), [["alpha", { status: "unavailable" }], ["beta", { status: "unavailable" }]]);
+    assert.deepEqual(services.map(service => service.health), [{ status: "missing" }, { status: "missing" }]);
     assert.ok(!body.includes("secret-"));
   } finally { harness.close(); }
 });

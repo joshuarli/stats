@@ -52,7 +52,7 @@ async function provision(origin: string): Promise<{ hostId: string; deployToken:
   const host = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { ...login(), "content-type": "application/json" }, body: JSON.stringify({ name: "tansu-host" }) });
   assert.equal(host.status, 201);
   const { hostId } = await host.json() as { hostId: string };
-  const service = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { ...login(), "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [hostId] }) });
+  const service = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { ...login(), "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [hostId], healthUrl: "https://service.example/health" }) });
   assert.equal(service.status, 201);
   const created = await service.json() as { deployToken: string; ingestToken: string };
   return { hostId, ...created };
@@ -136,7 +136,7 @@ await test("the ingest path ignores the peer's Tailscale identity and authentica
   try {
     const host = await installation.core.createHost("remote-host");
     assert.ok(host.ok);
-    const service = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [host.value.hostId] }) }));
+    const service = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [host.value.hostId], healthUrl: "https://service.example/health" }) }));
     assert.equal(service.status, 201);
     const { ingestToken } = await service.json() as { ingestToken: string };
     const batch = rebasedBatch(now);
@@ -163,7 +163,7 @@ await test("Node HTTP issue reads and mutations cannot cross service boundaries"
   const served = await serve(now);
   try {
     const credentials = await provision(served.origin);
-    const beta = await fetch(`${served.origin}/api/v1/admin/services`, { method: "POST", headers: { ...login(), "content-type": "application/json" }, body: JSON.stringify({ name: "beta", hostIds: [credentials.hostId] }) });
+    const beta = await fetch(`${served.origin}/api/v1/admin/services`, { method: "POST", headers: { ...login(), "content-type": "application/json" }, body: JSON.stringify({ name: "beta", hostIds: [credentials.hostId], healthUrl: "https://beta.example/health" }) });
     assert.equal(beta.status, 201);
     const batch = rebasedBatch(now);
     const failure = { ...batch.events[0]!, outcome: "error", error: { code: "db.timeout" } };

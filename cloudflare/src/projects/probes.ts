@@ -6,7 +6,7 @@ const PROBE_TIMEOUT_MS = 10_000;
 
 export type ProbeFetch = (url: string, init: { readonly method: "GET"; readonly redirect: "manual"; readonly signal: AbortSignal }) => Promise<{
   readonly status: number;
-  readonly body: { cancel(): Promise<void> } | null;
+  readonly body: { cancel(): Promise<void>; getReader?(options: { mode: "byob" }): ReadableStreamBYOBReader } | null;
 }>;
 
 interface ProbeInput {
