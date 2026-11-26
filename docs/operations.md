@@ -468,7 +468,10 @@ The cutover started a fresh installation: the OpenOrange installation answered
 503 on its admin and host routes, so no logical export was possible. Host IDs,
 names and token verifiers and service registrations were rebuilt from each
 producer's own configuration with
-[`restore-registrations.mjs`](../deploy/node/restore-registrations.mjs), which
+[`restore-registrations.mjs`](../deploy/node/restore-registrations.mjs). Its
+input holds only SHA-256 verifiers (`tokenSha256`, `deployTokenSha256`,
+`ingestTokenSha256`) computed on each producer, so no plaintext token is
+copied to the guest. It
 writes `RESET.json` with the restored names and any service left without a
 usable token (`agentctl-node`, `oo-platform`, `oo-tunnel`, the ingest token
 of `stats` and the deploy token of `tansu`). Telemetry before 2026-11-26
