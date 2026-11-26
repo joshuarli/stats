@@ -393,6 +393,8 @@ cd cloudflare && \
 | Variable | Meaning |
 | --- | --- |
 | `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time: the server holds an exclusive SQLite lock, and a second one exits 2 with `stats: STATS_DATA_DIR ... is in use by another server`. |
+| `STATS_AUTH` | `tailscale` (default) or `gateway`. Gateway mode requires the trusted proxy to strip identity headers and assert its secret and tailnet identity. |
+| `STATS_GATEWAY_SECRET_FILE` | In gateway mode, path to a readable file containing the shared single-line secret. |
 | `STATS_LISTEN` | `IPV4:PORT`, `[IPV6]:PORT`, or `unix:/absolute/path.sock`. Default `127.0.0.1:18791`; port `0` picks a free one. A socket's directory must exist; a stale socket file is replaced, a live one stops startup with exit 2, and the socket is `0600` and removed on shutdown. |
 
 A missing or invalid value stops startup with exit code 2 and a
@@ -414,7 +416,7 @@ passes health, and restores it if
 the replacement fails. Preflight uses an empty database and cannot prove a
 production data migration. Take the stopped backup before an upgrade.
 
-Every path other than `/health` and ingest needs a
+In the default `tailscale` mode, every path other than `/health` and ingest needs a
 `Tailscale-User-Login` header, which `tailscale serve` adds for tailnet users,
 and a loopback TCP peer. A connection on a Unix socket has no TCP peer and is
 trusted as transport, because only the owning user and root can open it; it
@@ -423,6 +425,11 @@ still needs the header:
 ```sh
 tailscale serve --bg --http=18790 http://127.0.0.1:18791
 ```
+
+In `gateway` mode, the trusted proxy instead supplies `Stats-Gateway-Secret` and
+`Stats-Tailnet-Identity`. Protect the secret file and restrict access to the
+Node listener; the proxy must remove client-supplied identity headers before
+adding its own.
 
 Because `tailscale serve` attaches the identity to every request from a
 user's device, a page on another site could otherwise drive writes. Every

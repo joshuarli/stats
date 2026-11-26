@@ -41,6 +41,7 @@ async function main(): Promise<void> {
     return metrics;
   };
   const server = createStatsServer({
+    auth: config.auth,
     metricsVerifier: process.env["INFRA_METRICS_TOKEN_SHA256"],
     metrics: request => handleMetricRequest(request, metricStore()),
     installation: request => installation.core.fetch(request),

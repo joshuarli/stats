@@ -5,6 +5,8 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createBrotliCompress, createGzip } from "node:zlib";
+import { gatewayDecision } from "../core/gateway.ts";
+import type { NodeAuth } from "./config.ts";
 import { handleStatsRequest, type ObserveService, type StatsTarget } from "../core/http.ts";
 import { handleApi } from "../observe/http/api.ts";
 import type { NodeInstallation } from "./installation.ts";
@@ -12,6 +14,7 @@ import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
+  readonly auth?: NodeAuth | undefined;
   readonly metricsVerifier?: string | undefined;
   readonly metrics?: (request: Request) => Promise<Response>;
   readonly installation: (request: Request) => Promise<Response>;
@@ -90,7 +93,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
       metricsAvailable: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? ""),
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
       capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? "") },
-      authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers)),
+      authorize: request => Promise.resolve(options.auth?.kind === "gateway" ? gatewayDecision(request.headers, options.auth.secret) : tailscaleDecision(peer, request.headers)),
       authorizeIngest: async (service, token) => {
         if (service === INFRA_SERVICE) return options.metricsVerifier !== undefined && /^[a-f0-9]{64}$/u.test(options.metricsVerifier) && constantTimeEqual(await tokenHash(token), options.metricsVerifier);
         const response = await options.installation(new Request("https://installation/ingest/observe-auth", {
