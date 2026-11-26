@@ -92,6 +92,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = {
       ...shared,
+      ...(options.application === undefined ? {} : { recordBrowserJourney: (journey) => options.application!.recordBrowserJourney(journey) }),
       metricsAvailable: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? ""),
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
       capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? "") },
@@ -114,7 +115,14 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
         return;
       }
       const run = () => handleStatsRequest(request, target);
-      await respond(outgoing, await (options.application === undefined ? run() : options.application.run(request, run)), request.method);
+      const response = await (options.application === undefined ? run() : options.application.capture(request, run));
+      const complete = options.application?.bodyCompletion(response);
+      if (complete !== undefined) {
+        let finished = false;
+        outgoing.once("finish", () => { finished = true; complete(false); });
+        outgoing.once("close", () => { if (!finished) complete(true); });
+      }
+      await respond(outgoing, response, request.method);
     })().catch((error: unknown) => failed(outgoing, error));
   };
 }

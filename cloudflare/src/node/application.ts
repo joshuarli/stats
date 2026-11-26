@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import { createBindingProducer, type ProducerStats } from "../../../packages/producer/src/index.ts";
 import type { OperationSink } from "../operations.ts";
 import type { OperationSummary } from "../observe/producer/channel.ts";
-import { toApplicationEvent, type ApplicationEventSinkOptions } from "../observe/application/sink.ts";
+import { captureApplicationRequest } from "../observe/application/http.ts";
+import type { BrowserJourney } from "../observe/application/journey.ts";
+import { postApplicationEvent, toApplicationEvent, type ApplicationEventSinkOptions } from "../observe/application/sink.ts";
 import { RELEASE } from "../observe/ingest/model.ts";
 import { NodeConfigError } from "./config.ts";
 import { handleApi } from "../observe/http/api.ts";
@@ -33,6 +35,7 @@ function excluded(request: Request): boolean {
 }
 
 export class NodeApplicationEvents {
+  private readonly responseTraces = new WeakMap<Response, string>();
   private readonly context = new AsyncLocalStorage<RequestContext | null>();
   private readonly producer: ReturnType<typeof createBindingProducer>;
   private readonly options: ApplicationEventSinkOptions;
@@ -49,7 +52,9 @@ export class NodeApplicationEvents {
       for (const event of body.events) this.producer.record({
         eventId: event.eventId, atMs: event.atMs, release: event.release, operation: event.operation,
         outcome: event.outcome, durationMs: event.durationMs, work: event.work,
-        ...(event.trace === undefined ? {} : { trace: event.trace }),
+        ...(event.operation.startsWith("http.") && this.context.getStore() != null
+          ? { trace: { traceId: this.context.getStore()!.traceId, spanId: id(8) } }
+          : event.trace === undefined ? {} : { trace: event.trace }),
         ...(event.error === undefined ? {} : { errorCode: event.error.code }),
         ...(event.instance === undefined ? {} : { instance: event.instance })
       });
@@ -76,6 +81,33 @@ export class NodeApplicationEvents {
         }
       }
     };
+  }
+
+  capture(request: Request, run: () => Promise<Response>): Promise<Response> {
+    return this.run(request, async () => {
+      if (excluded(request) || new URL(request.url).pathname === "/api/v1/ui-journeys") return run();
+      const response = await captureApplicationRequest(request, run, { ...this.options, monotonic: () => performance.now() });
+      const context = this.context.getStore();
+      if (context !== undefined && context !== null) this.responseTraces.set(response, context.traceId);
+      return response;
+    });
+  }
+
+  recordBrowserJourney(journey: BrowserJourney): void {
+    postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs: journey.startedAtMs,
+      operation: `ui.${journey.source}.${journey.range}.${journey.cache ? "cache" : "read"}`, outcome: journey.outcome,
+      durationMs: Math.round(journey.durationMs), trace: journey.trace, instance: `browser:${journey.asset}`,
+      work: { ...journey.work, transport_dropped: journey.dropped }, service: "stats", release: this.options.release
+    }, this.options);
+  }
+
+  bodyCompletion(response: Response): ((cancelled: boolean) => void) | undefined {
+    const traceId = this.responseTraces.get(response);
+    if (traceId === undefined) return undefined;
+    const started = performance.now();
+    return cancelled => this.producer.record({ atMs: Date.now(), operation: "http.response.body", outcome: cancelled ? "cancelled" : "ok",
+      durationMs: Math.min(86_400_000, Math.max(0, Math.round(performance.now() - started))),
+      work: { http_status: response.status }, trace: { traceId, spanId: id(8) } });
   }
 
   async run(request: Request, run: () => Promise<Response>): Promise<Response> {

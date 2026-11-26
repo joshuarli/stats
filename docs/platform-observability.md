@@ -142,3 +142,5 @@ binding call and result materialization; it is not database CPU time. See the
 [range-refresh record](../bench/results/2026-11-14-range-refresh/README.md).
 
 Node application operation events share a trace ID with their request invocation and have distinct span IDs. The existing application event schema does not carry an explicit parent span ID. Node SQLite cannot measure rows read, so Node operation events omit that work field.
+
+With `APPLICATION_EVENTS_RELEASE` configured, Node records response-header latency and a separate response-body completion or cancellation event. Browser journeys use the same bounded, authenticated admission as the Worker.
