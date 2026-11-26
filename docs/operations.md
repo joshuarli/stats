@@ -407,8 +407,7 @@ stops accepting connections, drains requests, stops sampling, flushes observatio
 All file-backed Node databases use WAL with exclusive locking, `synchronous=FULL`, a 1-second busy timeout, and a truncating checkpoint every 60 seconds. Checkpoint results appear in the runtime snapshot.
 
 Back up the whole `STATS_DATA_DIR` while the server is stopped. Include
-`stats.sqlite`, the `stats.sqlite.observe` directory, and the `stats.sqlite.metrics` directory. The latter contains
-one database per observation service. Preserve the original observation tables
+`stats.sqlite`, the `stats.sqlite.observe` directory, and the `stats.sqlite.metrics` directory. The observation directory contains one database per observation service. Preserve the original observation tables
 in `stats.sqlite` when inspecting ambiguous legacy data. Migration copies only
 rows whose service ownership is known, preserves issue resolution, and records
 completion in each destination transaction. Restart resumes an interrupted copy.

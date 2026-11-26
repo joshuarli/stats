@@ -141,8 +141,22 @@ not identify the logical method. SQL elapsed time includes the synchronous
 binding call and result materialization; it is not database CPU time. See the
 [range-refresh record](../bench/results/2026-11-14-range-refresh/README.md).
 
-Node application operation events share a trace ID with their request invocation and have distinct span IDs. The existing application event schema does not carry an explicit parent span ID. Node SQLite cannot measure rows read, so Node operation events omit that work field.
+## Node runtime
 
-With `APPLICATION_EVENTS_RELEASE` configured, Node records response-header latency and a separate response-body completion or cancellation event. Browser journeys use the same bounded, authenticated admission as the Worker.
+Node application operation events share a trace ID with their request invocation
+and have distinct span IDs. The application event schema does not carry an
+explicit parent span ID. Node SQLite cannot measure rows read, so Node operation
+events omit that work field.
 
-Node samples process CPU, memory, event-loop delay and utilization, garbage collection, request and stream activity, response bytes, application delivery, and SQLite timings every 10 seconds. Samples are retained in the metrics database for up to 24 hours and 8,640 records. `GET /api/v1/runtime` requires the configured identity and remains available if sample storage fails. File descriptor counts are unavailable outside Linux. SQLite rows read are unavailable; database sizes, lock failures, statement and transaction elapsed time, retention lateness, and checkpoint results are reported separately. Durations are elapsed time, not per-request CPU.
+With `APPLICATION_EVENTS_RELEASE` configured, Node records response-header
+latency and a separate response-body completion or cancellation event. Browser
+journeys use the same bounded, authenticated admission as the Worker.
+
+Node samples process CPU, memory, event-loop delay and utilization, garbage
+collection, request and stream activity, response bytes, application delivery,
+and SQLite timings every 10 seconds. MetricStore retains samples for up to 24
+hours and 8,640 records. The authenticated `GET /api/v1/runtime` route remains
+available if sample storage fails. File descriptor counts are unavailable
+outside Linux. SQLite rows read are unavailable. Database sizes, lock failures,
+statement and transaction elapsed time, retention lateness, and checkpoint
+results are reported separately. Durations are elapsed time, not per-request CPU.
