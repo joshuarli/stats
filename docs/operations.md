@@ -475,9 +475,23 @@ names and token verifiers and service registrations were rebuilt from each
 producer's own configuration with
 [`restore-registrations.mjs`](../deploy/node/restore-registrations.mjs), which
 writes `RESET.json` with the restored names and any service left without a
-usable token (`agentctl-node`, `oo-platform`, `oo-tunnel` and the deploy
-tokens of `tansu`). Telemetry before 2026-11-26 04:57 UTC is not in this
-installation.
+usable token (`agentctl-node`, `oo-platform`, `oo-tunnel`, the ingest token
+of `stats` and the deploy token of `tansu`). Telemetry before 2026-11-26
+04:57 UTC is not in this installation.
+
+The rebuild missed `m1-max`, whose agent was not among the configurations
+read; it was registered at 09:30 UTC from its own `hostId` and token
+verifier, so the agent kept its credential. At 09:35 UTC each token named in
+`RESET.json` was rotated with `statsctl service token rotate` into
+`~/.config/stats/services/NAME.json` on sentry. Each new ingest token was
+confirmed with a non-JSON batch (415 rather than 401) and each deploy token
+with an empty marker (400 rather than 401), so nothing was written. No
+producer reads the `agentctl-node`, `oo-tunnel` or `stats` tokens.
+`oo-platform` (`/etc/openorange/platform.env`) and `agentctl` on Lisa still
+send to the retired Lisa container at `172.29.80.20:8080`; repointing them
+means changing and restarting the parked apps' shared infrastructure, which
+is left to their owner. Tansu reads its deploy token through
+`STATS_DEPLOY_TOKEN_FILE`; point it at `~/.config/stats/services/tansu.json`.
 
 ### In a container on threadripper
 

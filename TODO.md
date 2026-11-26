@@ -1,14 +1,14 @@
 Prefix: STA
-Next: 141
+Next: 142
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
-### STA-139 · P2 · Re-provision the services the native cutover could not rebuild
+### STA-141 · P3 · Repoint the parked Lisa producers at the native Stats origin
 
-- **Area:** Operations · Credentials
-- **Where:** `/var/lib/stats-node/main/RESET.json` in the Stats guest; deploy/node/restore-registrations.mjs; docs/operations.md#production-in-the-threadripper-guest
-- **Problem:** The 2026-11-26 native cutover started a fresh installation because the OpenOrange installation answered 503 on its admin and host routes. Registrations were rebuilt from each producer's configuration, but no token was found for `agentctl-node`, `oo-platform` and `oo-tunnel`, nor for the deploy tokens of `tansu`; those rows hold unusable verifiers. Their producers fail authentication until re-provisioned.
-- **Recommendation:** Rotate each affected token with `statsctl services rotate` and install it in the producer's configuration, then confirm events or deploy markers arrive. agentctl-node, oo-platform and oo-tunnel belong to parked Lisa or Threadripper services: change only their Stats credential files.
+- **Area:** Operations · Producers
+- **Where:** Lisa `/etc/openorange/platform.env` (`STATS_ORIGIN`, `STATS_INGEST_TOKEN`), `/etc/openorange/apps/agentctl.env` (`APPLICATION_EVENTS_ENDPOINT`); docs/operations.md#production-in-the-threadripper-guest
+- **Problem:** Both still send to the retired Lisa Stats container at `172.29.80.20:8080`, so OpenOrange platform and agentctl telemetry is dropped. A reissued `oo-platform` ingest token is in `~/.config/stats/services/oo-platform.json`; agentctl's existing token is still valid.
+- **Recommendation:** When the parked apps are next changed, set the origin and endpoint to `https://stats.17166969.xyz` and install the `oo-platform` ingest token through a root-only env file, never argv, then restart. Confirm `statsctl observe application` shows their events.
 - **Fix with:** none
 - **Effort:** S
 
