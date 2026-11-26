@@ -87,6 +87,7 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
         probes.stop();
         scheduler.stop();
         stopCheckpoint();
+        await Promise.all([probes.drain(), scheduler.drain()]);
         await application?.shutdown();
         observe!.close();
         db.close();

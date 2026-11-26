@@ -402,7 +402,7 @@ cd cloudflare && \
 A missing or invalid value stops startup with exit code 2 and a
 `stats: <variable> ...` line on stderr. Once listening, the server prints
 `{"event":"listening","host":...,"port":...}` and logs the loaded release, source commit, Node version and known schema versions. The authenticated runtime snapshot exposes the same identity; observation database schema version is unavailable because that store has no version marker. On SIGTERM or SIGINT it
-stops accepting connections, drains requests, stops sampling, flushes observations, and closes the databases. It closes remaining connections after eight seconds and enforces a ten-second shutdown deadline.
+stops accepting connections, drains requests, stops sampling, cancels and joins active probes, flushes observations, and closes the databases. It closes remaining connections after eight seconds and enforces a ten-second shutdown deadline.
 
 All file-backed Node databases use WAL with exclusive locking, `synchronous=FULL`, a 1-second busy timeout, and a truncating checkpoint every 60 seconds. Checkpoint results appear in the runtime snapshot.
 
