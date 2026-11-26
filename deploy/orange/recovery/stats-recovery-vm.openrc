@@ -14,7 +14,7 @@ recovery_io_device() {
 
 recovery_io=$(recovery_io_device)
 rc_cgroup_settings="cpu.weight 10000
-memory.min 5G
+memory.min 1G
 memory.swap.max 0
 ${recovery_io:+io.latency $recovery_io target=10000}"
 
@@ -48,7 +48,8 @@ start() {
         return 1
     fi
     start-stop-daemon --start --user "$recovery_user" --chdir "$recovery_dir" \
-        --pidfile "$pidfile" --exec "$qemu" -- -enable-kvm -cpu host -smp 8 -m 4096 \
+        --pidfile "$pidfile" --exec "$qemu" -- -enable-kvm -cpu host -smp 8 -m 2048 \
+        -device virtio-balloon-pci,free-page-reporting=on \
         -drive file=stats.qcow2,format=qcow2,if=virtio -cdrom seed.iso \
         -nic "$forward" -display none -serial file:console.log -monitor none \
         -pidfile qemu.pid -daemonize && guest_running

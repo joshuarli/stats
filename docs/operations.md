@@ -452,6 +452,14 @@ Since 2026-11-26 production Stats is the Node server in the
 OpenOrange, Rivet and the Engine container are stopped and out of the
 runlevel; their data stays on the guest disk untouched.
 
+The guest has 2 GiB and a virtio balloon with free page reporting
+([unit](../deploy/orange/recovery/stats-recovery-vm.openrc)); its cgroup
+reserves `memory.min 1G`. Until 2026-11-26 it had 4 GiB and a 5 GiB
+reservation, and QEMU kept every page the guest had touched, so the host
+showed about 4.1 GiB resident while Stats used under 300 MiB (mostly page
+cache). After the change the host shows about 640 MiB and the guest 180 MiB
+used.
+
 | Piece | Location |
 | --- | --- |
 | Unit | `/etc/init.d/stats-node` ([source](../deploy/node/stats-node.openrc)), instance `stats-node.main`, user `stats-node` |
