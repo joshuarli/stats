@@ -269,6 +269,7 @@ await test("the Node configuration fails loudly on a missing or invalid value an
     assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: "[::1]:0" }).listen, { kind: "tcp", host: "::1", port: 0 });
     assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: `unix:${join(directory, "s.sock")}` }).listen, { kind: "unix", path: join(directory, "s.sock") });
     for (const [env, message] of [
+      [{ ...valid, STATS_SOURCE_COMMIT: "invalid secret" }, /STATS_SOURCE_COMMIT/u],
       [{ ...valid, STATS_AUTH: "invalid" }, /STATS_AUTH/u],
       [{ ...valid, STATS_AUTH: "gateway" }, /STATS_GATEWAY_SECRET_FILE/u],
       [{ ...valid, STATS_AUTH: "gateway", STATS_GATEWAY_SECRET_FILE: join(directory, "absent") }, /STATS_GATEWAY_SECRET_FILE/u],

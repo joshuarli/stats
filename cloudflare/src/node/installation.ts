@@ -40,6 +40,7 @@ export interface NodeInstallation {
   readonly core: InstallationCore;
   readonly observe: NodeObservations;
   readonly now: () => number;
+  schemaVersion(): number;
   close(): void;
   shutdown(): Promise<void>;
 }
@@ -81,6 +82,7 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
       application,
       observe,
       now: () => clock.now(),
+      schemaVersion: () => Number(db.prepare("SELECT version FROM schema_version LIMIT 1").get()!["version"]),
       async shutdown(): Promise<void> {
         probes.stop();
         scheduler.stop();

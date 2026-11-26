@@ -31,8 +31,8 @@ function launch(env: Record<string, string>): { child: ChildProcess; output: () 
   return { child, output: () => output, exited: () => exit };
 }
 
-async function start(dataDir: string): Promise<Started> {
-  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0" });
+async function start(dataDir: string, extra: Record<string, string> = {}): Promise<Started> {
+  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", ...extra });
   const port = await new Promise<number>((resolvePort, reject) => {
     const timer = setTimeout(() => reject(new Error(`server did not report a port: ${launched.output()}`)), 10_000);
     launched.child.stdout!.on("data", () => {
@@ -291,6 +291,31 @@ await test("ten consecutive restarts preserve exact data and recover health with
     }
   } finally {
     if (server !== undefined && server.child.exitCode === null && server.child.signalCode === null) { server.child.kill("SIGTERM"); await server.exited(); }
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+await test("startup identity is logged and available only on the authenticated runtime route", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-identity-"));
+  const commit = "abcdef1234567890abcdef1234567890abcdef12";
+  const server = await start(dataDir, { APPLICATION_EVENTS_RELEASE: "release-123", STATS_SOURCE_COMMIT: commit });
+  try {
+    assert.match(server.output(), /"event":"startup_identity"/u);
+    assert.match(server.output(), /"sourceCommit":"abcdef1234567890abcdef1234567890abcdef12"/u);
+    assert.equal((await fetch(`${server.origin}/api/v1/runtime`)).status, 401);
+    const response = await fetch(`${server.origin}/api/v1/runtime`, { headers: { "Tailscale-User-Login": LOGIN } });
+    const body = await response.json() as { identity: { release: string; sourceCommit: string; node: string; schemas: { installation: number; applicationEvents: number; metrics: string } } };
+    assert.equal(body.identity.release, "release-123");
+    assert.equal(body.identity.sourceCommit, commit);
+    assert.equal(body.identity.node, process.version);
+    assert.ok(body.identity.schemas.installation > 0);
+    assert.equal(body.identity.schemas.applicationEvents, 1);
+    assert.equal(body.identity.schemas.metrics, "stats-infra-metrics/2");
+    const health = await (await fetch(`${server.origin}/health`)).text();
+    assert.doesNotMatch(health, /release-123|abcdef1234567890|node|schema/u);
+  } finally {
+    server.child.kill("SIGTERM");
+    await server.exited();
     rmSync(dataDir, { recursive: true, force: true });
   }
 });

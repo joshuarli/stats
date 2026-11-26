@@ -3,6 +3,13 @@ import { constants, monitorEventLoopDelay, performance, PerformanceObserver } fr
 import type { MetricStore } from "../metrics/store.ts";
 import type { NodeApplicationEvents } from "./application.ts";
 
+export interface RuntimeIdentity {
+  readonly release: string | null;
+  readonly sourceCommit: string | null;
+  readonly node: string;
+  readonly schemas: { readonly installation: number; readonly applicationEvents: number; readonly metrics: string; readonly metricsCatalog: number; readonly observations: null };
+}
+
 export interface SqlObservation {
   measure<T>(kind: "statement" | "transaction", operation: () => T): T;
 }
@@ -40,6 +47,7 @@ export class NodeRuntime {
   private bytes = 0;
   private exportFailures = 0;
   private application: NodeApplicationEvents | undefined;
+  private identity: RuntimeIdentity | null = null;
 
   constructor(store: () => MetricStore, intervalMs = 10_000) {
     this.store = store;
@@ -60,6 +68,7 @@ export class NodeRuntime {
     this.timer.unref();
   }
 
+  setIdentity(identity: RuntimeIdentity): void { this.identity = identity; }
   attachApplication(application: NodeApplicationEvents | undefined): void { this.application = application; }
   requestStarted(): void { this.activeRequests += 1; }
   requestFinished(): void { this.activeRequests -= 1; }
@@ -101,7 +110,7 @@ export class NodeRuntime {
       try { openFds = readdirSync("/proc/self/fd").length; } catch { openFds = null; }
     }
     return {
-      atMs: Date.now(),
+      atMs: Date.now(), identity: this.identity,
       process: { cpuUserUs: cpu.user, cpuSystemUs: cpu.system, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal, externalBytes: memory.external, arrayBuffersBytes: memory.arrayBuffers, openFds, startTimeMs: this.startTimeMs },
       eventLoop: { delayP50Ns: this.histogram.percentile(50), delayP99Ns: this.histogram.percentile(99), delayMaxNs: this.histogram.max, utilization: this.utilization },
       gc: structuredClone(this.gc), activeRequests: this.activeRequests, inflightStreams: this.streams, responseBytes: this.bytes,

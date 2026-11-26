@@ -2,6 +2,9 @@ import { INFRA_SERVICE } from "../../../packages/infra-collector/src/contract.ts
 import type { Server, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
+import { INGEST_SCHEMA_VERSION } from "../observe/ingest/model.ts";
+import { INFRA_METRICS_SCHEMA } from "../metrics/codec.ts";
+import { CATALOG_VERSION } from "../metrics/catalog.ts";
 import { MetricStore } from "../metrics/store.ts";
 import { handleMetricRequest } from "../metrics/http.ts";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
@@ -45,6 +48,10 @@ async function main(): Promise<void> {
     if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
     throw error;
   }
+  const identity = { release: process.env["APPLICATION_EVENTS_RELEASE"] ?? null, sourceCommit: config.sourceCommit, node: process.version,
+    schemas: { installation: installation.schemaVersion(), applicationEvents: INGEST_SCHEMA_VERSION, metrics: INFRA_METRICS_SCHEMA, metricsCatalog: CATALOG_VERSION, observations: null } };
+  runtime.setIdentity(identity);
+  console.log(JSON.stringify({ event: "startup_identity", ...identity }));
   const requests = new Set<Promise<void>>();
   const server = createStatsServer({
     trackRequest: request => {

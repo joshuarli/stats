@@ -12,6 +12,7 @@ export type Listen =
 export type NodeAuth = { readonly kind: "tailscale" } | { readonly kind: "gateway"; readonly secret: string };
 
 export interface NodeConfig {
+  readonly sourceCommit: string | null;
   readonly auth: NodeAuth;
   readonly databasePath: string;
   readonly listen: Listen;
@@ -76,7 +77,10 @@ function auth(env: Readonly<Record<string, string | undefined>>): NodeAuth {
 }
 
 export function nodeConfig(env: Readonly<Record<string, string | undefined>>): NodeConfig {
+  const sourceCommit = env["STATS_SOURCE_COMMIT"];
+  if (sourceCommit !== undefined && !/^[a-f0-9]{7,64}$/u.test(sourceCommit)) throw new NodeConfigError("STATS_SOURCE_COMMIT must be a lowercase hexadecimal commit identifier");
   return {
+    sourceCommit: sourceCommit ?? null,
     auth: auth(env),
     databasePath: join(dataDirectory(env["STATS_DATA_DIR"]), DATABASE_FILE),
     listen: listen(env["STATS_LISTEN"])

@@ -393,6 +393,7 @@ cd cloudflare && \
 | Variable | Meaning |
 | --- | --- |
 | `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time: the server holds an exclusive SQLite lock, and a second one exits 2 with `stats: STATS_DATA_DIR ... is in use by another server`. |
+| `STATS_SOURCE_COMMIT` | Optional lowercase hexadecimal source commit identifier, exposed in startup identity and the authenticated runtime snapshot. |
 | `APPLICATION_EVENTS_RELEASE` | Enables Node application observations when set to a valid release identifier. Events are buffered in process and written to the `stats` observation store. |
 | `STATS_AUTH` | `tailscale` (default) or `gateway`. Gateway mode requires the trusted proxy to strip identity headers and assert its secret and tailnet identity. |
 | `STATS_GATEWAY_SECRET_FILE` | In gateway mode, path to a readable file containing the shared single-line secret. |
@@ -400,7 +401,7 @@ cd cloudflare && \
 
 A missing or invalid value stops startup with exit code 2 and a
 `stats: <variable> ...` line on stderr. Once listening, the server prints
-`{"event":"listening","host":...,"port":...}`. On SIGTERM or SIGINT it
+`{"event":"listening","host":...,"port":...}` and logs the loaded release, source commit, Node version and known schema versions. The authenticated runtime snapshot exposes the same identity; observation database schema version is unavailable because that store has no version marker. On SIGTERM or SIGINT it
 stops accepting connections, drains requests, stops sampling, flushes observations, and closes the databases. It closes remaining connections after eight seconds and enforces a ten-second shutdown deadline.
 
 All file-backed Node databases use WAL with exclusive locking, `synchronous=FULL`, a 1-second busy timeout, and a truncating checkpoint every 60 seconds. Checkpoint results appear in the runtime snapshot.
