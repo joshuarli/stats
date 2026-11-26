@@ -8,6 +8,7 @@ void test("metric writes and reads enforce authorization, media type, limits and
   const store = new MetricStore();
   const token = `nft_${"a".repeat(43)}`;
   const target: StatsTarget = {
+    observeExports: false,
     capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: false },
     authorize: request => Promise.resolve(request.headers.get("x-reader") === "yes" ? { ok: true } : { ok: false, status: 401, message: "denied" }),
     authorizeIngest: (_service, supplied) => Promise.resolve(supplied === token),

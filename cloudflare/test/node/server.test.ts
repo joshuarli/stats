@@ -390,3 +390,15 @@ void test("a failed response names its request and error without the query strin
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
+
+void test("the logical backup on Node covers the installation only", async () => {
+  const served = await serve("127.0.0.1");
+  try {
+    const listed = await served.fetch("/api/v1/admin/objects", { headers: login("someone@example.com") });
+    assert.equal(listed.status, 200, listed.text);
+    assert.deepEqual(JSON.parse(listed.text), { objects: ["installation"] });
+    const observed = await served.fetch("/api/v1/admin/objects/observe:stuff/export/manifest", { headers: login("someone@example.com") });
+    assert.equal(observed.status, 404);
+    assert.match(observed.text, /stopped data directory/u);
+  } finally { await served.close(); }
+});

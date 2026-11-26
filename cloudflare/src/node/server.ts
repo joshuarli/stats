@@ -114,6 +114,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
       ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
       capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? "") },
       authorize: request => Promise.resolve(options.auth?.kind === "gateway" ? gatewayDecision(request.headers, options.auth.secret) : tailscaleDecision(peer, request.headers)),
+      observeExports: false,
       authorizeIngest: async (service, token) => {
         if (service === INFRA_SERVICE) return options.metricsVerifier !== undefined && /^[a-f0-9]{64}$/u.test(options.metricsVerifier) && constantTimeEqual(await tokenHash(token), options.metricsVerifier);
         const response = await options.installation(new Request("https://installation/ingest/observe-auth", {

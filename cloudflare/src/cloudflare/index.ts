@@ -74,6 +74,7 @@ export default {
       health,
       capabilities: capabilities(env),
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
+      observeExports: true,
       authorizeIngest: async (service, token) => {
         if (service === INFRA_SERVICE) {
           const verifier = env.INFRA_METRICS_TOKEN_SHA256;

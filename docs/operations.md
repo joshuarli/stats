@@ -405,6 +405,12 @@ passes health, and restores it if
 the replacement fails. Preflight uses an empty database and cannot prove a
 production data migration. Take the stopped backup before an upgrade.
 
+On Node, `statsctl backup` lists and exports only the `installation` object.
+Observation stores (`stats.sqlite.observe/`) and the metrics store
+(`stats.sqlite.metrics/`) are not part of the logical backup, and their object
+routes answer 404. A complete Node backup is a copy of the whole data
+directory taken with `stats-node.main` stopped.
+
 In the default `tailscale` mode, every path other than `/health` and ingest needs a
 `Tailscale-User-Login` header, which `tailscale serve` adds for tailnet users,
 and a loopback TCP peer. A connection on a Unix socket has no TCP peer and is

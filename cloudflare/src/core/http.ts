@@ -30,6 +30,7 @@ export interface StatsTarget {
   readonly installation: (request: Request) => Promise<Response>;
   readonly assets: (request: Request) => Promise<Response>;
   readonly observe: ObserveService | null;
+  readonly observeExports: boolean;
   readonly runtime?: () => unknown;
   readonly recordBrowserJourney?: (journey: BrowserJourney) => void;
 }
@@ -175,6 +176,7 @@ const OBJECT_ROUTE = /^\/admin\/objects\/(installation|observe:([a-z][a-z0-9-]{0
 async function maintainObject(request: Request, target: StatsTarget, suffix: string): Promise<Response> {
   if (suffix === "/admin/objects") {
     if (request.method !== "GET") return error(405, "invalid_request", "GET required");
+    if (!target.observeExports) return Response.json({ objects: ["installation"] });
     const listed = await target.installation(internal(request, "/services"));
     if (!listed.ok) return error(503, "unavailable", "the service list is unavailable");
     const registered = ((await listed.json()) as { services: readonly { name: string }[] }).services.map(service => service.name);
@@ -187,6 +189,7 @@ async function maintainObject(request: Request, target: StatsTarget, suffix: str
   const rest = match[3]!;
   if (match[2] === undefined) return target.installation(internal(request, `/admin${rest}`));
   if (target.observe === null) return error(503, "unavailable", "observability is not available on this target");
+  if (!target.observeExports) return error(404, "not_found", "observation stores are not part of the logical backup on this target; back up the stopped data directory");
   const search = new URL(request.url).search;
   return target.observe(`https://observe/${match[2]}/admin${rest}${search}`, {
     method: request.method,

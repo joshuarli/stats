@@ -15,6 +15,7 @@ for (const [route, request] of Object.entries(routes)) {
   await test(`${route} reports a depot deadline as unavailable`, async () => {
     let body: unknown = { group: "depot", code: "request_deadline_exceeded", message: "private upstream details" };
     const target: StatsTarget = {
+      observeExports: false,
       capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: false },
       authorize: async () => ({ ok: true }), authorizeIngest: async () => false, serviceExists: async () => false,
       installation: async () => Response.json(body, { status: 400 }),
