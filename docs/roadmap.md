@@ -4,6 +4,7 @@ This is the single plan for this repository: all current and future work, and th
 
 ## Status
 
+- Native migration (NS): active 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend for production Stats. Resume from [Campaign: Native Stats](#campaign-native-stats); the shared Stuff deployment stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff). Production is unchanged so far.
 - Active: simplification and self-optimization, S1, S2 and S5; S0 is complete.
 - Last accepted repository revision: `c5855db751141c82e9a90bfa3fe6644ab56c4a14`; integration green at this revision is not established. S0 recorded a green fresh-checkout `make cloudflare-test`.
 - S1 app and collector use the rollout transaction; capture and disposable guest recreation were exercised. S2's log-shard mechanism was repaired; the CPU spin remains open (STA-135).
@@ -25,11 +26,44 @@ Preserve exact acknowledged data, authentication, bounded queues and gap semanti
 
 | ID | Campaign | Owned files | Prerequisites | Acceptance command |
 | --- | --- | --- | --- | --- |
+| NS | Native Stats | `cloudflare/src/node/`, `deploy/node/`, `deploy/observer/` | Parity lane `campaign/native-stats-parity` accepted | Per-stage acceptance in the campaign below |
 | STA-138 | Simplification S1/S6 | `deploy/orange/recovery/guest/`, `bench/standby-soak-faults.py` | Restored disposable capture and functional ingest check | `deploy/orange/recovery/guest/test-native-stats-respawn.sh`; real-app restart and new soak also required |
 | STA-135 | Simplification S2 | Stuff Engine configuration and `deploy/orange/recovery/` | Validated capture and isolated reproduction | `deploy/orange/recovery/contention-drill.sh start`; reproduce the spin and verify the repair |
 | S3 | Simplification | `cloudflare/src/metrics/`, release evaluator | Bring forward the measurements needed by S2 | `make cloudflare-test`; verify the investigation scenarios below |
 | S4 | Simplification | `deploy/orange/`, Stuff runtime build | Isolated runtime baseline | `make orange-test`; compare edit-to-ready and closure against baseline |
 | STA-128 | Performance W4 | `bench/observation-overhead*.mjs` | Classify original browser failure, preserve attempt ledger; no new allowance is implied | `node --test bench/observation-overhead-analysis.test.mjs`; full five-pair study requires its original conditions |
+
+## Campaign: Native Stats
+
+### Goal and state
+
+Run production Stats on the existing Node backend (node:http, node:sqlite),
+portable cores, Rust agents and dashboard, with no OpenOrange or Rivet. The
+canonical origin, tailnet trust boundary, ingest and service credentials and
+host registrations are preserved; telemetry history may restart from an
+explicit reset marker. Stats must then observe the Stuff migration (Stuff
+roadmap campaign NM) and one bounded improvement cycle. Failed fixtures,
+consumed attempt budgets and STA-128/135/138 remain evidence; removing the
+runtime does not close them as repaired.
+
+### Baseline (2026-11-26, read-only)
+
+| Fact | Observed |
+| --- | --- |
+| Route | Lisa Caddy `stats.17166969.xyz` (tailnet only, identity sidecar, `Stats-Gateway-Secret`) → `127.0.0.1:18489` → `oo-stats-live-tunnel` → Threadripper `127.0.0.1:49177` → guest `127.0.0.1:8080`; direct ingest/markers via `oo-stats-direct-proxy` |
+| Guest | `stats-recovery-vm` (`~/.local/share/stats-live-recovery/20261118`, 8 vCPU, 4 GiB, `cpu.weight 10000`, `memory.min 5G`); root filesystem 91% used (2.2 GiB free) |
+| Processes | `native-stats` (`orange serve` + two runners, 13 respawns recorded), rivet-engine container (≈4 cores busy continuously, the STA-135 spin), `stats-infra-collector` |
+| Observer | Threadripper `stats-observer` (Node 26.13.1 musl), 60 s probes of Stats health, synthetic ingest and registry status codes |
+| Host | Threadripper load ≈20; the Stats VM's qemu is the largest CPU consumer (≈415%) |
+
+### Stages
+
+| Stage | What | Acceptance | Recovery | Status |
+| --- | --- | --- | --- | --- |
+| NS1 | Node parity: gateway auth adapter, operation sink, HTTP capture and browser journeys, runtime/SQLite observations, SQLite WAL/FULL policy, bounded shutdown, loaded identity | `pnpm --dir cloudflare run typecheck lint test:node test:observe test:node-e2e test:metrics` | n/a | In progress on `campaign/native-stats-parity` (gateway auth landed `e6bd2065`) |
+| NS2 | Guest packaging: OpenRC unit running the Node bundle as an unprivileged user with controlled egress for service probes; data, observe and metric directories; consistent stopped backup | Isolated candidate on the guest passes `/health`, ingest/readback, dashboard | Old unit untouched | Open |
+| NS3 | Cutover: archive old depot cheaply, record reset marker, stop OpenOrange unit and Engine container, start Node on `127.0.0.1:8080` behind the unchanged tunnel; restore services/tokens | Real hosts resume; `statsctl check ingest`; dashboard; ten restarts < 15 s | Restart the OpenOrange unit and Engine (disk image untouched) | Open |
+| NS4 | Soak and self-improvement cycle; then remove OpenOrange/Rivet from the guest | 24 h soak and 24 h post-cutover; one recorded hypothesis | Retained archive | Open |
 
 ## Campaign: Simplification and self-optimization
 
