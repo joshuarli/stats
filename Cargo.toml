@@ -1,4 +1,4 @@
 [workspace]
 members = ["packages/stats-producer"]
-exclude = ["agent"]
+exclude = ["agent", ".work"]
 resolver = "3"
