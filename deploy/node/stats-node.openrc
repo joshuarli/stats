@@ -22,7 +22,7 @@ export STATS_DATA_DIR="${stats_data}"
 export STATS_LISTEN="${stats_listen}"
 export STATS_AUTH=gateway
 export STATS_GATEWAY_SECRET_FILE=/etc/stats-node/gateway-secret
-export STATS_SOURCE_COMMIT="${stats_source_commit}"
+[ -n "${stats_source_commit}" ] && export STATS_SOURCE_COMMIT="${stats_source_commit}"
 export APPLICATION_EVENTS_RELEASE="stats-node-${stats_release}"
 
 depend() {
