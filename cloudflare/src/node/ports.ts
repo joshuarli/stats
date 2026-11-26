@@ -57,7 +57,7 @@ export class TimerScheduler implements Scheduler {
     }
     if (this.dueMs !== null) this.late?.(Math.max(0, this.clock.now() - this.dueMs));
     this.dueMs = null;
-    const task = Promise.resolve().then(() => this.stopped ? undefined : this.fire()).catch(this.failed);
+    const task = this.fire().catch(this.failed);
     this.running.add(task);
     void task.then(() => { this.running.delete(task); }, () => { this.running.delete(task); });
   }
