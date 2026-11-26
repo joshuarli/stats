@@ -106,3 +106,31 @@ await test("Node captures response completion separately and accepts bounded sam
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+await test("Node application delivery stays bounded and never blocks a request when its store stalls", async () => {
+  const { NodeApplicationEvents } = await import("../../src/node/application.ts");
+  let release: (() => void) | undefined;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const batches: number[][] = [];
+  const observations = { forService: () => ({ ingestExternal: async (_service: string, events: readonly import("../../src/observe/ingest/model.ts").ExternalEvent[]) => {
+    await gate;
+    batches.push(events.map(event => event.delivery!.sequence));
+    return { ok: true, accepted: events.length, duplicate: 0 };
+  } }) };
+  const application = new NodeApplicationEvents(observations as unknown as import("../../src/node/observations.ts").NodeObservations, "release-123");
+  try {
+    await Promise.all(Array.from({ length: 300 }, () => application.capture(new Request("https://stats/"), async () => new Response("ok"))));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const stats = application.stats();
+    assert.equal(stats.queueHigh, 128);
+    assert.ok(stats.dropped > 0);
+    assert.ok(stats.queued <= 128);
+    release?.();
+    await application.flush();
+    assert.ok(batches.every(batch => batch.length <= 64));
+    assert.deepEqual(batches.flat(), [...Array.from({ length: 64 }, (_, index) => index + 1), ...Array.from({ length: 128 }, (_, index) => index + 173)]);
+  } finally {
+    release?.();
+    await application.shutdown();
+  }
+});
