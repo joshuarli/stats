@@ -252,7 +252,7 @@ export async function main(args) {
         exhausted = false;
       } catch (error) {
         if (!(error instanceof EvidenceExhausted)) throw error;
-        if (!exhausted) appendDurable(resolve(statePath, 'evidence-exhausted.jsonl'), { at: new Date().toISOString(), condition: 'evidence', ok: false, exhausted: error.message });
+        if (!exhausted) appendDurable(resolve(statePath, 'exhaustion.jsonl'), { at: new Date().toISOString(), condition: 'evidence', ok: false, exhausted: error.message });
         exhausted = true;
       }
       outbox.transition(condition, !result.ok);

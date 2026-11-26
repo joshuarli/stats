@@ -172,8 +172,9 @@ test('main continues alert transitions when evidence reaches its reserve', async
       await new Promise(done => setTimeout(done, 25));
     }
     assert.match(alerts, /"condition":"health","transition":"open"/);
+    assert.match(alerts, /"condition":"evidence-space","transition":"open"/);
     await new Promise(done => setTimeout(done, 200));
-    assert.equal(readFileSync(resolve(state, 'evidence-exhausted.jsonl'), 'utf8').trim().split('\n').length, 1);
+    assert.equal(readFileSync(resolve(state, 'exhaustion.jsonl'), 'utf8').trim().split('\n').length, 1);
   } finally {
     child.kill('SIGTERM');
     await new Promise(done => child.once('exit', done));
