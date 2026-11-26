@@ -43,6 +43,14 @@ await test("Node records request operations with linked trace context without ob
     await installation.application!.flush();
     const traces = (await installation.observe.forService("stats").external("stats", {})).map(row => row.event).filter(event => event.operation === "host.history").map(event => event.trace!.traceId);
     assert.ok(traces.some(trace => /^[a-f0-9]{32}$/u.test(trace) && trace !== "0".repeat(32) && trace !== "a".repeat(32)));
+    await assert.rejects(installation.application!.capture(new Request("https://stats/api/v1/hosts"), async () => {
+      installation.application!.operations.invocation();
+      throw new Error("private failure detail");
+    }), /private failure detail/u);
+    await installation.application!.flush();
+    const failures = (await installation.observe.forService("stats").external("stats", {})).map(row => row.event).filter(event => event.operation === "installation.request" && event.outcome === "error");
+    assert.ok(failures.length > 0);
+    assert.doesNotMatch(JSON.stringify(failures), /private failure detail/u);
     const service = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [created.value.hostId] }) }));
     assert.equal(service.status, 201);
     const credentials = await service.json() as { ingestToken: string };
