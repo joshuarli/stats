@@ -229,6 +229,7 @@ await test("an acknowledged ingest survives SIGKILL with exact readback", async 
     const before = await latest();
     assert.equal(before.status, 200);
     const expected = await before.text();
+    assert.ok(existsSync(join(dataDir, "stats.sqlite-wal")));
     server.child.kill("SIGKILL");
     assert.equal(await server.exited(), null);
     server = await start(dataDir);
@@ -286,6 +287,7 @@ await test("ten consecutive restarts preserve exact data and recover health with
       assert.equal(await server.exited(), 0, server.output());
       server = await start(dataDir);
       assert.equal((await fetch(`${server.origin}/health`)).status, 200);
+      assert.equal((await fetch(`${server.origin}/api/v1/runtime`, { headers: { "Tailscale-User-Login": LOGIN } })).status, 200);
       assert.equal(await (await read()).text(), expected);
       assert.ok(performance.now() - started < 15_000, `restart ${cycle + 1} exceeded 15 seconds`);
     }
