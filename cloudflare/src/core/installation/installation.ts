@@ -664,7 +664,7 @@ export class InstallationCore {
     const sql = operation.sql;
     try {
       if (path === "/ingest") return await this.ingest(request, operation);
-      if (path === "/hosts" && request.method === "GET") return json({ hosts: await this.listHosts() });
+      if (path === "/hosts" && request.method === "GET") return json({ hosts: (await this.listHosts()).filter(host => !isSyntheticHost(host.name)) });
       const latest = /^\/hosts\/(h_[0-9a-f]{32})\/latest$/u.exec(path);
       if (latest !== null && request.method === "GET") {
         const sample = await this.latest(latest[1]!);

@@ -130,6 +130,18 @@ describe("host.ingest", () => {
   });
 });
 
+describe("host listing", () => {
+  it("omits the synthetic check host from the fleet and keeps it for administration", async () => {
+    const synthetic = await createHost("synthetic-check");
+    const ordinary = await createHost("synthetic-check-2");
+    const list = async (path: string) => invoke(async instance => (await instance.fetch(new Request(`https://installation${path}`))).json() as Promise<{ hosts: { hostId: string }[] }>);
+    const fleet = (await list("/hosts")).result.hosts.map(host => host.hostId);
+    expect(fleet).toContain(ordinary.hostId);
+    expect(fleet).not.toContain(synthetic.hostId);
+    expect((await list("/admin/hosts")).result.hosts.map(host => host.hostId)).toContain(synthetic.hostId);
+  });
+});
+
 describe("history operations", () => {
   async function read(path: string, headers: Record<string, string> = {}) {
     return invoke(async instance => instance.fetch(new Request(`https://installation${path}`, { headers })));
