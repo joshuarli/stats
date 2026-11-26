@@ -183,7 +183,7 @@ await test("service create requires a health URL and inspect fails a missing or 
   });
   try {
     const missing = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--credential-file", join(scratch, "missing-health.json"), "--origin", origin.origin], {});
-    assert.notEqual(missing.code, 0);
+    assert.equal(missing.code, 2, missing.stdout + missing.stderr);
     for (status of ["missing", "down"]) {
       const inspect = await runCli(["service", "inspect", "--service", "web", "--origin", origin.origin, "--json"], {});
       assert.equal(inspect.code, 7);
