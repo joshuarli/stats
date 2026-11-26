@@ -1,16 +1,8 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import type { IncomingMessage } from "node:http";
-import type { AddressInfo } from "node:net";
-import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_ORIGIN, deploymentOf, resolveOrigin } from "../../src/cli/auth.ts";
 import { REGISTRY } from "../../src/cli/commands/index.ts";
-import { identityProxy, startNode } from "./node-server.ts";
 import { fakeOrigin, runCli } from "./support.ts";
-
-const ROOT = resolve(import.meta.dirname, "../..");
-const SCRATCH = resolve(ROOT, "../.work/tmp");
 
 await test("the deployment table decides the target", () => {
   assert.equal(deploymentOf(DEFAULT_ORIGIN, {}).target, "node");
@@ -51,36 +43,5 @@ await test("an orange-only command against a Node origin exits 2 before any requ
     assert.equal(origin.connections(), 0);
   } finally {
     await origin.close();
-  }
-});
-
-await test("check ingest passes against the Node server behind an identity-adding proxy and sends no credential", async () => {
-  const dataDir = mkdtempSync(join(SCRATCH, "target-node-"));
-  const node = await startNode(dataDir);
-  const seen: IncomingMessage["headers"][] = [];
-  const proxy = await identityProxy(node.port, seen);
-  try {
-    const origin = `http://localhost:${(proxy.address() as AddressInfo).port}`;
-    assert.equal(deploymentOf(origin, { STATSCTL_TARGET: "node" }).target, "node");
-    const created = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "synthetic-check" }) });
-    assert.equal(created.status, 201);
-    const host = await created.json() as { hostId: string; token: string };
-    const file = join(dataDir, "credential.json");
-    writeFileSync(file, JSON.stringify(host));
-    chmodSync(file, 0o600);
-    seen.length = 0;
-    const run = await runCli(["check", "ingest", "--credential-file", file, "--origin", origin, "--json"], { STATSCTL_TARGET: "node" });
-    assert.equal(run.code, 0, run.stdout + run.stderr);
-    const document = JSON.parse(run.stdout) as { payload: { ok: boolean; steps: { name: string; ok: boolean }[] } };
-    assert.ok(document.payload.ok);
-    assert.ok(document.payload.steps.every(step => step.ok));
-    assert.ok(seen.length >= 4);
-    for (const headers of seen) assert.equal(headers["cf-access-token"], undefined);
-    assert.ok(!run.stdout.includes(host.token) && !run.stderr.includes(host.token));
-  } finally {
-    proxy.close();
-    node.child.kill("SIGTERM");
-    await new Promise(resolveExit => node.child.once("exit", resolveExit));
-    rmSync(dataDir, { recursive: true, force: true });
   }
 });

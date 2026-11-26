@@ -9,7 +9,7 @@ spec.loader.exec_module(soak)
 
 MINUTE = 60_000
 SOURCES = {"engine:live": ["rivet_topology_discovery_heartbeat_reads_total"], "worker:stats:0": ["openorange_worker_info"]}
-DEFINITION = {"durationHours": 24, "recoveryS": 120, "minSteadyCheckSuccess": 0.99, "latencyMs": {"ingest": {"p95": 500, "p99": 1000}},
+DEFINITION = {"durationHours": 24, "recoveryS": 120, "minSteadyCheckSuccess": 0.99, "latencyMs": {"hosts": {"p95": 500, "p99": 1000}},
               "restartingFaults": ["app-restart"], "maxWarningRunSamples": 3, "maxMedianMemoryChange": 0.05, "maxQueueSlopePerHour": 0.5,
               "maxActorRelativeSlopePerHour": 0.02, "minFreeBytes": 2 << 30, "requiredSources": SOURCES,
               "faults": [{"name": "app-restart", "kind": "app-restart", "atHours": 3}]}
@@ -33,11 +33,10 @@ def series():
                                 "runtime": [{"evidence": {"releaseId": "rt-1"}, "detail": {"source": s, "status": "ok", "families": {f: {"usable": True} for f in fams}}} for s, fams in SOURCES.items()]}
         row = {"kind": "sample", "index": index, "atMs": at, "latenessSeconds": 0.1, "guest": guest}
         if index % 5 == 0:
-            row["check"] = {"ok": True, "seq": str(at + 7), "steps": [{"name": "ingest", "ok": True, "ms": 90}]}
+            row["check"] = {"ok": True, "steps": [{"name": "hosts", "ok": True, "ms": 90}]}
         rows.append(row)
     rows.append({"kind": "end", "complete": True})
-    faults = [{"kind": "fault", "name": "app-restart", "startedAtMs": FAULT_AT, "endedAtMs": FAULT_AT + 20_000, "recoveredAfterS": 9, "error": None},
-              {"kind": "ledger", "found": [r["atMs"] + 7 for r in rows if r.get("check")]}]
+    faults = [{"kind": "fault", "name": "app-restart", "startedAtMs": FAULT_AT, "endedAtMs": FAULT_AT + 20_000, "recoveredAfterS": 9, "error": None}]
     return rows, faults
 
 
@@ -49,13 +48,6 @@ class StandbySoakTests(unittest.TestCase):
     def test_a_complete_healthy_series_passes(self):
         result = judge(*series())
         self.assertEqual(result["verdict"], "pass", result)
-
-    def test_a_lost_acknowledged_write_fails(self):
-        rows, faults = series()
-        faults[-1]["found"] = faults[-1]["found"][:-1]
-        result = judge(rows, faults)
-        self.assertEqual(result["verdict"], "fail")
-        self.assertIn("lost acknowledged writes", result["failed"])
 
     def test_a_restart_outside_its_fault_fails(self):
         rows, faults = series()
@@ -79,8 +71,6 @@ class StandbySoakTests(unittest.TestCase):
         self.assertEqual(judge(rows, faults)["verdict"], "inconclusive")
         rows, faults = series()
         self.assertEqual(judge(rows[:-1] + [{"kind": "end", "complete": False}], faults)["verdict"], "inconclusive")
-        rows, faults = series()
-        self.assertEqual(judge(rows, faults[:-1])["verdict"], "inconclusive")
 
     def test_an_hour_with_a_planned_collector_restart_is_excused_but_other_gaps_are_not(self):
         rows, faults = series()
@@ -101,10 +91,10 @@ class StandbySoakTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "inconclusive", result)
         self.assertIn("appRss has no measured baseline", result["missing"])
         self.assertIsNone(result["plateau"]["appRss"]["relativeChange"])
-        faults[-1]["found"] = faults[-1]["found"][:-1]
+        faults[0]["recoveredAfterS"] = 150
         result = judge(rows, faults)
         self.assertEqual(result["verdict"], "fail")
-        self.assertIn("lost acknowledged writes", result["failed"])
+        self.assertIn("fault app-restart did not recover within 120 s", result["failed"])
 
     def test_a_fault_that_does_not_recover_in_time_fails(self):
         rows, faults = series()

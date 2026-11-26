@@ -55,10 +55,10 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    exits 5 unless all are available. A signal the policy does not use never blocks it.
    During the deployment warm-up (after it begins, before the after window), save the
    safety check; verify never mutates:
-   pnpm --dir cloudflare -s statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json > .work/check-ingest.json
+   pnpm --dir cloudflare -s statsctl check hosts --hosts lisa,threadripper --max-age 2m --json > .work/check-hosts.json
 
 6. Wait for settlement
-   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
+   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-hosts.json --wait --timeout 2h --json
    --wait sleeps until the after window is ready, then polls at most every 15 minutes with
    If-None-Match. On timeout it exits 5 with pending and prints the command to resume.
 
@@ -77,16 +77,15 @@ All times are UTC. A window is half-open: [fromMs, toMs).
                       evidence is insufficient-data, never a pass.
 
 8. Resume after an interruption
-   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
+   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-hosts.json --wait --timeout 2h --json
    State lives in .work/statsctl/verify/DEPLOYMENT_ID.json; repeating the same command
    continues from it and counts requests across runs. A finished verdict is not re-read.
    To re-derive the verdict offline from the saved evidence (it fails if it differs):
    pnpm --dir cloudflare -s statsctl verify --replay .work/statsctl/verify/DEPLOYMENT_ID.json
 
-9. Check ingest end to end (mutation)
-   pnpm --dir cloudflare -s statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json
-   Writes one real, flagged sample. Run it only with the synthetic-check credential and
-   only inside the excluded deployment and warm-up interval.
+9. Check host freshness
+   pnpm --dir cloudflare -s statsctl check hosts --hosts lisa,threadripper --max-age 2m --json
+   Wait until every expected real host is reporting.
 
 10. Record and read service deployments (mutation, Cloudflare and Node origins)
    pnpm --dir cloudflare -s statsctl deploy mark --service stats-node --version COMMIT --message release --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790
@@ -109,5 +108,5 @@ Why a lower monthly estimate is not necessarily a win
 Authentication
    statsctl sends no credential. Stats is reachable only on the tailnet; its gateway, or
    tailscale serve on a Node origin, asserts the caller's tailnet identity.
-   A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: only check ingest,
+   A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: only check hosts,
    deploy mark, services, service deployments, and verify --service work there.`;

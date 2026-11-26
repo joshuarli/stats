@@ -109,7 +109,7 @@ The retained Cloudflare adapter uses project histories instead:
 ```sh
 pnpm --dir cloudflare -s statsctl health --project stats --json
 pnpm --dir cloudflare -s statsctl deployments --project stats --json
-pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/example.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
+pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/example.json --safety-check-file .work/check-hosts.json --wait --timeout 2h --json
 ```
 
 `statsctl help workflow` holds the full recipes and `statsctl help verify`
@@ -148,19 +148,7 @@ past `--within`; choose `--within` to bound that repetition. Scheduling it (a
 host timer or an agent routine) and the alert destination are not set up and
 need a tailnet device.
 
-`check ingest` writes one real sample using the credential supplied with
-`--credential-file`. Use the dedicated `synthetic-check` host credential from
-`.work/credentials/synthetic-check.json`; the command does not enforce that
-host role. Other writes are listed under [Mutations](#the-statsctl-contract).
-It encodes one known sample with a
-fresh sequence and time, POSTs it, expects the acknowledgment to accept 1, reads
-the latest sample and compares every encoded value, checks history gauges and first-sample rate gaps, replays the identical bytes and expects
-duplicate 1 and accepted 0, and confirms the stored count did not change. Its
-encoder, `src/ingest/encode.ts`, must reproduce every `fixtures/v2` golden frame
-byte for byte (`test/ingest/conformance.test.ts`). Run it in production only
-inside a deployment's excluded bucket and warm-up interval, so its sample never
-enters a measured window; synthetic operations carry a flag and are excluded
-from organic metrics, but their cost stays in totals.
+Run `statsctl check hosts --hosts lisa,threadripper --max-age 2m --json` after deployment begins. Save the output as `.work/check-hosts.json` for the verification safety check. Every expected host must report a receipt after deployment begins.
 
 Deploy order matters for measurement. `stats` publishes one `operation` message
 per instrumented invocation, and `stats-observe` must already accept it:
@@ -178,7 +166,6 @@ go to stderr. Decoders reject incompatible schemas rather than guessing.
 
 Read requests use gateway identity. Mutations that need host or service tokens
 read protected credential files. Never put tokens in argv, snapshots or reports.
-Only use `check ingest` with a disposable host; it writes real samples.
 `cloudflare/src/cli/http.ts` owns request limits and read retries, and
 `cloudflare/src/cli/snapshot-store.ts` owns snapshot integrity and retention.
 
@@ -565,15 +552,10 @@ local instance.
 `statsctl` picks its target from the origin. A host ending in `.ts.net`, or a
 bare name with no dot, is a Node origin: statsctl sends no credential, because
 `tailscale serve` adds the identity. Service administration, inspection, checks,
-markers and deployments work there, as do `observe application`, `check ingest`
+markers and deployments work there, as do `observe application`, `check hosts`
 and `verify --service`. Project/Cloudflare-only commands exit 2 with
 `unsupported_on_target` before a request. Command help lists the supported
-targets. Store the `synthetic-check` host
-credential (`{hostId, name, token}`, mode 0600) and run:
-
-```sh
-pnpm --dir cloudflare -s statsctl check ingest --origin http://threadripper.tailcf741.ts.net:18790 --credential-file .work/credentials/synthetic-check-node.json
-```
+targets.
 
 Verify the expected online roster with an authenticated read from the
 service that accepts production ingest.
@@ -624,8 +606,7 @@ curl -sS http://threadripper.tailcf741.ts.net:18790/api/v1/admin/services \
 ```
 
 Record a deploy after it succeeds. The token file is the creation response
-saved above. `statsctl` checks it like the `check ingest` credential file
-(mode 0600, read from the invocation directory, `name` must equal `--service`),
+saved above. `statsctl` checks its mode is 0600 and its `name` equals `--service`,
 sends the token only in the `Authorization` header, and sends no other
 credential on either target. `--host` defaults to the service's `hostIds` from
 the file, and `--marker-id` defaults to `v-<version>`, so repeating a deploy is

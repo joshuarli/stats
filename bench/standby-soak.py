@@ -4,9 +4,8 @@ Runs on Threadripper's host, outside the guest it observes, with the SSH alias s
 --ssh-config. Each sample runs one read-only probe on the guest (loaded identities and process
 start times, RSS and cumulative CPU, disk and Engine storage gauges, Engine warning classes since
 the previous sample, actor counts, application health) and, every --check-every samples, one
-synthetic ingest with readback and duplicate replay through ordinary public ingress. Every record
-is one fsynced JSON line in --output. Secrets are read on the guest and never leave it; the
-synthetic credential stays in its file. bench/analyze-standby-soak.py judges the result.
+host freshness check through ordinary public ingress. Every record
+is one fsynced JSON line in --output. Secrets are read on the guest and never leave it. bench/analyze-standby-soak.py judges the result.
 """
 import argparse
 import hashlib
@@ -131,7 +130,7 @@ parser = argparse.ArgumentParser(description="Sustained-operation soak sampler f
 parser.add_argument("--output", required=True)
 parser.add_argument("--ssh-config", required=True)
 parser.add_argument("--statsctl", required=True)
-parser.add_argument("--credential-file", required=True)
+parser.add_argument("--hosts", required=True)
 parser.add_argument("--origin", default="https://stats.17166969.xyz")
 parser.add_argument("--samples", type=int, default=1441)
 parser.add_argument("--interval", type=int, default=60)
@@ -156,14 +155,16 @@ def probe(since, sources_to_ms=0):
 
 def check():
     started = time.monotonic()
-    result = subprocess.run([args.statsctl, "check", "ingest", "--origin", args.origin, "--credential-file", args.credential_file, "--json"],
+    result = subprocess.run([args.statsctl, "check", "hosts", "--origin", args.origin, "--hosts", args.hosts, "--max-age", "2m", "--json"],
                             capture_output=True, text=True, timeout=60)
+    wall_ms = round((time.monotonic() - started) * 1000)
     try:
-        payload = json.loads(result.stdout)["payload"]
-    except (ValueError, KeyError):
-        return {"ok": False, "exit": result.returncode, "wallMs": round((time.monotonic() - started) * 1000), "steps": None}
-    return {"ok": payload["ok"], "seq": payload.get("seq"), "hostId": payload.get("hostId"), "wallMs": round((time.monotonic() - started) * 1000),
-            "steps": [{"name": s["name"], "ok": s["ok"], "ms": s["ms"], "code": s.get("code")} for s in payload["steps"]]}
+        hosts = json.loads(result.stdout)["payload"]["hosts"]
+        ok = result.returncode == 0 and bool(hosts) and all(host["state"] == "reporting" for host in hosts)
+    except (ValueError, KeyError, TypeError):
+        ok = False
+    return {"ok": ok, "exit": result.returncode, "wallMs": wall_ms, "steps": [{"name": "hosts", "ok": ok, "ms": wall_ms}]}
+
 
 
 started = time.monotonic()
@@ -177,7 +178,7 @@ with open(args.output, "x", encoding="utf-8") as output:
     emit({"kind": "start", "atMs": time.time_ns() // 1_000_000, "identity": first["identity"], "samples": args.samples, "intervalSeconds": args.interval,
           "checkEvery": args.check_every, "origin": args.origin, "scriptSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
           "definitionSha256": hashlib.sha256(Path(args.definition).read_bytes()).hexdigest(), "samplerPid": os.getpid(),
-          "traffic": "existing production traffic plus the synthetic check", "gaps": ["runtime inbox depth unavailable", "native export-loss counters unavailable",
+          "traffic": "existing production traffic", "gaps": ["runtime inbox depth unavailable", "native export-loss counters unavailable",
           "actor lifecycle timestamps do not establish state", "application producer queues visible only through delivered observations"]})
     completed = degraded = 0
     for index in range(args.samples):

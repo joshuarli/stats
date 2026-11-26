@@ -16,7 +16,7 @@ function mark(operation) {
   const span = tracing.getActiveSpan();
   if (span === undefined) return;
   const context = span.spanContext();
-  channel.publish({ kind: "operation", traceId: context.traceId, spanId: context.spanId, operation, synthetic: false, rows: null });
+  channel.publish({ kind: "operation", traceId: context.traceId, spanId: context.spanId, operation, rows: null });
 }
 export class TenantStore extends DurableObject {
   constructor(ctx, env) {

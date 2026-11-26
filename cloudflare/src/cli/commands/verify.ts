@@ -73,7 +73,7 @@ const POLICY_FIELD_HELP: readonly (readonly [string, string])[] = [
 ];
 
 const GUARDRAIL_HELP: readonly (readonly [string, string])[] = [
-  ["safety-check", "a saved `check ingest --json` that passed, run after the deploy began and before the after window"],
+  ["safety-check", "a saved `check hosts --hosts HOSTS --max-age 2m --json` that passed, run after the deploy began and before the after window"],
   ["failed-share", "operation failures: none if the before side had none, else the share may rise at most 1 point"],
   ["new-issue-group", "no observe issue group whose first version is the candidate; a group with the same operation and error name as one seen since the before window began, under another fingerprint, is `regrouped` and makes the verdict confounded"],
   ["probe-failure-share", "no probe failure share rose by 1 point or more; not applicable when the project defines no probes"],
@@ -140,7 +140,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
     description: [
       "For the offline promotion gate, see `statsctl help verify release`.",
       "Applies a pre-registered policy to the exact before and after windows of one deployment and prints a verdict: improved, unchanged, confounded, insufficient-data, pending, or regressed.",
-      "Read-only. It never runs `check ingest`; run that yourself inside the deployment warm-up and pass its saved --json output with --safety-check-file. A missing, failed, or pre-deploy check never passes.",
+      "Read-only. It never runs `check hosts`; run that yourself inside the deployment warm-up and pass its saved --json output with --safety-check-file. A missing, failed, or pre-deploy check never passes.",
       "",
       "Verdict precedence: regressed (any guardrail regressed, or the target metric moved the wrong way materially) > confounded (overlap, split or deferred rollout, workload drift, a history 304-share move above 20 points (cache-mix), or a global comparison reason) > insufficient-data (a side lacks operations, coverage is not reconciled, or any guardrail has no evidence) > pending (the after window has not settled) > improved or unchanged.",
       "An insufficient guardrail is never a pass. Missing data is never zero. Exit codes: 0 improved, 5 pending or insufficient-data, 6 unchanged or confounded, 7 regressed.",
@@ -162,7 +162,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       `  floor is at least the metric's default (${[...SERVICE_LEVEL_METRICS, ...SERVICE_WORK_METRICS].map(entry => `${entry.metric} ${entry.floor}`).join(", ")}). There are no guardrails and no waiting: a window that has not settled is pending (exit 5), so run it again later.`,
       "  The output states that resource levels and per-work ratios are descriptive, not causal. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io supersede host.cpu, host.memory, and host.disk, which stay in the response marked supersededBy and which a policy can still target.",
       "",
-      "Target judgement: the metric is the sum over the operation's organic (non-synthetic) buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
+      "Target judgement: the metric is the sum over the operation's buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
     ],
     access: "read",
     targets: ["orange", "node"],
@@ -172,7 +172,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       deployment: { type: "string", placeholder: "ID", description: "deployment id from `statsctl deployments`, or latest (required unless --replay)" },
       window: { type: "string", placeholder: "SPAN", description: "comparison window, 1h, 6h, or 24h; defaults to the policy's window and may not differ from it" },
       policy: { type: "string", placeholder: "FILE", description: "policy JSON file, e.g. bench/policies/<id>.json (required unless --replay)" },
-      "safety-check-file": { type: "string", placeholder: "FILE", description: "saved output of `statsctl check ingest --json` run inside the deployment warm-up" },
+      "safety-check-file": { type: "string", placeholder: "FILE", description: "saved output of `statsctl check hosts --hosts HOSTS --max-age 2m --json` run inside the deployment warm-up" },
       wait: { type: "boolean", description: "wait for the after window to settle instead of exiting pending" },
       timeout: { type: "string", placeholder: "SPAN", default: "30m", description: "give up waiting after this span (s, m, h, d) and exit 5 with a resume command" },
       readiness: { type: "boolean", description: "list each signal the policy needs as available or unavailable and exit" },
@@ -181,7 +181,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
     exclusive: [["service", "project"], ["service", "wait"], ["service", "readiness"], ["service", "replay"], ["service", "safety-check-file"], ["replay", "wait"], ["replay", "readiness"], ["replay", "policy"], ["replay", "project"], ["replay", "deployment"], ["replay", "safety-check-file"], ["readiness", "wait"]],
     examples: [
       "statsctl verify --project stats --deployment DEPLOYMENT_ID --policy bench/policies/EXPERIMENT.json --readiness --json",
-      "statsctl verify --project stats --deployment DEPLOYMENT_ID --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json",
+      "statsctl verify --project stats --deployment DEPLOYMENT_ID --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-hosts.json --wait --timeout 2h --json",
       "statsctl verify --replay .work/statsctl/verify/DEPLOYMENT_ID.json --json"
     ],
     limitations: [

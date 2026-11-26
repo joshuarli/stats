@@ -274,7 +274,7 @@ export interface Invocation {
 }
 
 function operationMessage(traceId: string, spanId: string, operation: string) {
-  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId, spanId, operation, synthetic: false, rows: null } };
+  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId, spanId, operation, rows: null } };
 }
 
 export function workerEntry(rng: () => number, invocation: Invocation): SimEntry {

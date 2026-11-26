@@ -88,9 +88,9 @@ function decodeSafety(value: unknown, path: string): SafetyRecord | null {
   if (value === null) return null;
   const fields = record(value, path, "safety");
   if (typeof fields["ok"] !== "boolean") fail(path, "safety.ok must be a boolean");
-  const failedStep = fields["failedStep"];
-  if (failedStep !== null && typeof failedStep !== "string") fail(path, "safety.failedStep must be a string or null");
-  return { ok: fields["ok"], atMs: integer(fields["atMs"], path, "safety.atMs"), hostId: stringValue(fields["hostId"], path, "safety.hostId"), origin: stringValue(fields["origin"], path, "safety.origin"), failedStep, file: stringValue(fields["file"], path, "safety.file") };
+  const failedHost = fields["failedHost"];
+  if (failedHost !== null && typeof failedHost !== "string") fail(path, "safety.failedHost must be a string or null");
+  return { ok: fields["ok"], atMs: integer(fields["atMs"], path, "safety.atMs"), hosts: stringValue(fields["hosts"], path, "safety.hosts"), origin: stringValue(fields["origin"], path, "safety.origin"), failedHost, file: stringValue(fields["file"], path, "safety.file") };
 }
 
 function decodeIssues(value: unknown, path: string): IssueCheck | null {

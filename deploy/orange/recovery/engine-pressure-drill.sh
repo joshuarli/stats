@@ -1,24 +1,4 @@
 #!/bin/sh
-# Drives the STA-135 pressure/recovery case against a guest that recreate.sh kept (GUEST_KEEP=1).
-#   deploy/orange/recovery/engine-pressure-drill.sh NAME FAULT OUT_DIR
-# FAULT is one of
-#   stall      throttle the guest's disk through QEMU (DRILL_IOPS, DRILL_BPS) for the pressure phase
-#   warm-read  read the whole live depot on the guest's own disk while the Engine serves, throttled
-#              like stall when DRILL_IOPS is set; DRILL_COPY=1 also writes the copy to the same disk,
-#              as the 2026-11-22 capture did (it needs the depot's size free on the guest)
-#   none       load only; with DRILL_FREE_BYTES this is the small log-budget case
-# DRILL_FREE_BYTES, when set, first fills the guest's root filesystem with a ballast file until that
-# many bytes stay free and restarts the Engine and app, so the Engine sizes its log shard and cold
-# cache from that free space at startup, as it does in production.
-#
-# One cycle: BASELINE_S of load, PRESSURE_S with the fault, then the fault is removed and the run
-# waits up to RECOVERY_S (120 by default, the campaign's pressure-recovery objective) for the healthy
-# envelope: a synthetic ingest with readback and duplicate replay passes, and the Engine logged no
-# refusal or deadline warning and used less than ENGINE_CPU_MAX percent in the last two samples.
-# It keeps observing for WATCH_S more; three consecutive unhealthy samples there are a relapse. CYCLES repeats it on the same state.
-# Requires GUEST_HOST, GUEST_ROOT (as for recreate.sh), STATS_CHECK_CREDENTIAL_FILE and STATSCTL.
-# Writes OUT_DIR/samples.jsonl (one line per SAMPLE_S), load.jsonl and cycles.jsonl, and exits 0 only
-# when every cycle recovered within RECOVERY_S without relapse.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
 [ "$#" -eq 3 ] || { echo "usage: deploy/orange/recovery/engine-pressure-drill.sh NAME stall|warm-read|none OUT_DIR" >&2; exit 2; }
@@ -26,7 +6,7 @@ name=$1 fault=$2 out=$3
 case "$fault" in stall|warm-read|none) ;; *) echo "engine-pressure-drill: unknown FAULT $fault" >&2; exit 2 ;; esac
 host=${GUEST_HOST:?GUEST_HOST is required}
 guest_root=${GUEST_ROOT:?GUEST_ROOT is required}
-credential=${STATS_CHECK_CREDENTIAL_FILE:?STATS_CHECK_CREDENTIAL_FILE is required}
+hosts=${STATS_CHECK_HOSTS:?STATS_CHECK_HOSTS is required}
 statsctl=${STATSCTL:?STATSCTL is required}
 access=$HOME/.local/state/openorange/guests/$name.access
 baseline_s=${BASELINE_S:-120} pressure_s=${PRESSURE_S:-300} recovery_s=${RECOVERY_S:-120} watch_s=${WATCH_S:-300}
@@ -69,17 +49,15 @@ if [ -n "${DRILL_FREE_BYTES:-}" ]; then
     log "{\"at\":\"$(now)\",\"event\":\"ballast\",\"freeBytes\":$DRILL_FREE_BYTES,\"budget\":\"$(guest "docker logs live-stats-engine 2>&1 | grep 'resolved storage disk capacities' | tail -1 | sed 's/.*log_disk_bytes=\([0-9]*\).*cache_bytes=\([0-9]*\).*/log \1 cache \2/'")\"}"
 fi
 
-# One sample, run in this shell so the check cadence and the last check persist: Engine CPU, Engine warning classes and app registration losses since the last sample,
-# and a synthetic check every 30 s (the check host is admitted six frames a minute).
 last_check=0 check='null'
 sample() {
     phase=$1
     t=$(ms)
     if [ $((t - last_check)) -ge 30000 ]; then
         last_check=$t
-        check=$("$statsctl" check ingest --origin "$origin" --credential-file "$credential" --json 2>/dev/null | python3 -I -c 'import json, sys
+        check=$("$statsctl" check hosts --origin "$origin" --hosts "$hosts" --max-age 2m --json 2>/dev/null | python3 -I -c 'import json, sys
 try:
-    p = json.load(sys.stdin)["payload"]; print(json.dumps({"ok": p["ok"], "ms": round(sum(s["ms"] or 0 for s in p["steps"])), "failed": [s["name"] for s in p["steps"] if not s["ok"]]}))
+    hosts = json.load(sys.stdin)["payload"]["hosts"]; print(json.dumps({"ok": bool(hosts) and all(h["state"] == "reporting" for h in hosts), "failed": [h["name"] for h in hosts if h["state"] != "reporting"]}))
 except Exception: print(json.dumps({"ok": False, "ms": None, "failed": ["unreadable"]}))')
     else check='null'; fi
     engine=$(guest "since=${sample_s}s; cpu=\$(docker stats --no-stream --format '{{.CPUPerc}}' live-stats-engine | tr -d %); logs=\$(docker logs --since \$since live-stats-engine 2>&1); c() { printf '%s' \"\$logs\" | grep -c \"\$1\"; }; printf '{\"cpu\":%s,\"refused\":%s,\"deadline\":%s,\"alarmFailed\":%s,\"capacity\":%s,\"nearCapacity\":%s,\"coldReads\":%s,\"warn\":%s,\"lost\":%s,\"free\":%s}' \"\${cpu:-null}\" \"\$(c 'refusing envoy connect')\" \"\$(c request_deadline_exceeded)\" \"\$(c 'alarm callback failed')\" \"\$(c command_capacity)\" \"\$(c 'near its capacity')\" \"\$(c 'cold reads near')\" \"\$(c 'level=warn')\" \"\$(tail -c 65536 /var/log/native-stats.log | grep -c 'losing the engine')\" \"\$(df -B1 / | awk 'NR==2{print \$4}')\"" 2>/dev/null || echo null)

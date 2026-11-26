@@ -249,7 +249,7 @@ await test("service identity comes only from the platform script name", () => {
 const SHOP_SPAN = { traceId: "9bcf42a3d155dee9563e537e144790e4", spanId: "2b1e95b0d4dcde81" };
 
 function serviceOperation(overrides: Record<string, unknown> = {}) {
-  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", ...SHOP_SPAN, operation: "request.cart", synthetic: false, rows: null, ...overrides } };
+  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", ...SHOP_SPAN, operation: "request.cart", rows: null, ...overrides } };
 }
 
 await test("a service other than stats carries its trace on a generic operation message and needs no invocation mark", () => {
@@ -259,7 +259,7 @@ await test("a service other than stats carries its trace on a generic operation 
     assert.equal(reduction.kind, "observed");
     if (reduction.kind === "observed") assert.deepEqual(reduction.invocation.trace, SHOP_SPAN);
   }
-  for (const bad of [{ operation: "host.ingest" }, { operation: "deployments.poll" }, { rows: { read: 1 } }, { rows: { read: -1, written: 0, statements: 0 } }, { synthetic: "no" }, { traceId: 1 }, { workLagMs: -1 }, { workLagMs: 1.5 }, { workLagMs: "5" }, { workLagMs: null }]) {
+  for (const bad of [{ operation: "host.ingest" }, { operation: "deployments.poll" }, { rows: { read: 1 } }, { rows: { read: -1, written: 0, statements: 0 } }, { traceId: 1 }, { workLagMs: -1 }, { workLagMs: 1.5 }, { workLagMs: "5" }, { workLagMs: null }]) {
     assert.equal(label(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(bad)] }), shop), "rejected", JSON.stringify(bad));
   }
   assert.equal(label(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(), serviceOperation()] }), shop), "rejected");
@@ -272,6 +272,7 @@ await test("a sampled service's operation summary carries its name, row account 
     return reduction.kind === "observed" ? reduction.invocation.serviceOperation : reduction.kind;
   };
   assert.deepEqual(read({}), { name: "request.cart", rows: null, workLagMs: null });
+  assert.deepEqual(read({ synthetic: false }), read({ extra: { arbitrary: 1 } }));
   assert.deepEqual(read({ operation: "store.alarm", rows: { read: 7, written: 2, statements: 3 }, workLagMs: 1250 }), { name: "store.alarm", rows: { read: 7, written: 2, statements: 3 }, workLagMs: 1250 });
   assert.deepEqual(read({ workLagMs: 0 }), { name: "request.cart", rows: null, workLagMs: 0 });
   const memories = reduceTailItem(fetchItem("https://memories.example/", 200, { diagnosticsChannelEvents: [serviceOperation({ operation: "request.route" })] }), POLICIES["usr-memories"]);
@@ -317,7 +318,7 @@ await test("an event that carries two different invocation marks is kept untrace
 await test("stats keeps its typed operation decoder, and a generic message is not a stats operation", () => {
   const generic = serviceOperation({ operation: "host.ingest" });
   assert.equal(label(fetchItem("https://stats.example/ingest/v2/batches", 200, { diagnosticsChannelEvents: [generic] })), "rejected");
-  const typed = { channel: OBSERVE_CHANNEL, message: { kind: "operation", ...SHOP_SPAN, operation: "deployments.poll", synthetic: false, rows: { read: 1, written: 0, statements: 1 } } };
+  const typed = { channel: OBSERVE_CHANNEL, message: { kind: "operation", ...SHOP_SPAN, operation: "deployments.poll", rows: { read: 1, written: 0, statements: 1 } } };
   const reduction = reduceTailItem(fetchItem("https://stats.example/ingest/v2/batches", 200, { diagnosticsChannelEvents: [typed] }), POLICIES.stats);
   assert.equal(reduction.kind === "observed" ? reduction.invocation.operation?.operation : reduction.kind, "deployments.poll");
 });

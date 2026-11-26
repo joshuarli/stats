@@ -116,7 +116,7 @@ await test("a regressed guardrail overrides a cost win", async () => {
   const persistence = await verdictFor(newWorld({ after: { rowsWritten: 300, work: { persisted: 150 } } }));
   assert.equal(guardrail(persistence, "ingest-persistence")?.status, "regressed");
   assert.equal(persistence.exit, EXIT.regressed);
-  const failedCheck = await verdictFor(newWorld(), {}, POLICY, { ok: false, failedStep: "replay" });
+  const failedCheck = await verdictFor(newWorld(), {}, POLICY, { ok: false, failedHost: "lisa" });
   assert.equal(verdictOf(failedCheck).verdict, "regressed");
 });
 
@@ -138,7 +138,7 @@ await test("an error that regrouped under the candidate is confounded and names 
 await test("a failed safety check regresses at once, even before the window is ready", async () => {
   const world = newWorld();
   world.clock.now = AT + 30 * 60_000;
-  const result = await verdictFor(world, {}, POLICY, { ok: false, failedStep: "ingest" });
+  const result = await verdictFor(world, {}, POLICY, { ok: false, failedHost: "lisa" });
   assert.equal(verdictOf(result).verdict, "regressed");
   assert.equal(result.exit, EXIT.regressed);
 });

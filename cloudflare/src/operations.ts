@@ -4,8 +4,6 @@ import type { HostHistoryColumns } from "./history-frame.ts";
 import type { HistoryKind } from "./limits.ts";
 import type { ProjectHistory, ProjectKind } from "./projects/history.ts";
 
-export const SYNTHETIC_HOST_NAME = "synthetic-check";
-
 type Described<T> = T extends unknown ? Omit<T, "rows"> : never;
 export type OperationDescription = Described<OperationSummary>;
 
@@ -42,10 +40,6 @@ export class OperationRun {
       this.sink.operation({ ...this.describer(), rows: this.sql.total(), ...(durationMs === undefined ? {} : { durationMs }) } as OperationSummary);
     }
   }
-}
-
-export function isSyntheticHost(name: string): boolean {
-  return name === SYNTHETIC_HOST_NAME;
 }
 
 export function meteredWritesBy(sql: SqlDatabase, query: string, ...params: SqlValue[]): number {

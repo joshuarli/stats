@@ -90,7 +90,7 @@ Service administration writes one owner-only credential file and never prints ei
     pnpm --dir cloudflare -s statsctl service token rotate --service tansu --kind ingest --credential-file .work/credentials/tansu.json
     pnpm --dir cloudflare -s statsctl service check --service tansu
 
-Only explicitly classified mutation commands write. Use `check ingest` with a dedicated synthetic-check host; the CLI does not enforce that role. `deploy mark` writes a service marker, and service administration changes the named service and protected credential file. Command help lists access and target capabilities.
+Only explicitly classified mutation commands write. `deploy mark` writes a service marker, and service administration changes the named service and protected credential file. Command help lists access and target capabilities.
 
 ## More
 

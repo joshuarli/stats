@@ -79,7 +79,7 @@ interface SideTotals {
 }
 
 function sideTotals(rows: readonly OperationWindowRow[], scope: ComparisonScope, side: ComparisonSide): SideTotals {
-  const operationRows = rows.filter(row => row.operation === scope.operation && !row.synthetic && row.bucketAt >= side.fromMs && row.bucketAt < side.toMs);
+  const operationRows = rows.filter(row => row.operation === scope.operation && row.bucketAt >= side.fromMs && row.bucketAt < side.toMs);
   const scoped = operationRows.filter(row => scope.workloadClass === null || row.workloadClass === scope.workloadClass);
   const sum = (pick: (row: OperationWindowRow) => number) => scoped.reduce((total, row) => total + pick(row), 0);
   const operations = sum(row => row.count);

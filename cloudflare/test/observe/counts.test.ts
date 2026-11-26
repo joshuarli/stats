@@ -50,7 +50,7 @@ interface Generated {
 }
 
 function operationMessage(traceId: string, spanId: string, operation: string, summary: PublishedSummary = { rows: null }) {
-  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId, spanId, operation, synthetic: false, ...summary } };
+  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId, spanId, operation, ...summary } };
 }
 
 function expectedTotals(summary: PublishedSummary): SummaryTotals {

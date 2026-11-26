@@ -161,7 +161,7 @@ moves more than 20 points between hours, which suppresses the verdict, and its
 
 - **Metric.** The sum of CPU, wall time, SQLite rows read or written, or
   statements over the operation buckets that match the policy's operation and
-  workload class, excluding synthetic checks, divided by that operation's work
+  workload class, divided by that operation's work
   unit. The work unit is persisted samples for `host.ingest`, requests within one
   workload class for `host.history` and `project.history`, and successful runs for
   `collector.record`.

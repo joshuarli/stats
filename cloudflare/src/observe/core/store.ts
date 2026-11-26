@@ -311,6 +311,25 @@ function upgradeOccurrenceSources(db: SqlStatements): void {
   for (const index of OCCURRENCE_INDEXES) db.run(index);
 }
 
+const OPERATION_STATEMENT = `CREATE TABLE IF NOT EXISTS observe_operations (
+    bucket_at INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK (operation IN (${OPERATION_IDS.map(id => `'${id}'`).join(", ")})),
+    workload_class TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    lag_count INTEGER NOT NULL DEFAULT 0,
+    lag_ms_max INTEGER NOT NULL DEFAULT 0,
+    lag_ms_sum INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL,
+    cpu_ms_sum INTEGER NOT NULL,
+    wall_ms_sum INTEGER NOT NULL,
+    rows_read INTEGER NOT NULL,
+    rows_written INTEGER NOT NULL,
+    statements INTEGER NOT NULL,
+    ${OPERATION_WORK_COLUMNS.map(column => `${column} INTEGER NOT NULL DEFAULT 0`).join(",\n    ")},
+    PRIMARY KEY (bucket_at, version, operation, workload_class)
+  ) WITHOUT ROWID`;
+
 const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS observe_invocations (
     key TEXT PRIMARY KEY,
@@ -390,25 +409,7 @@ const STATEMENTS = [
     rows_written INTEGER NOT NULL,
     PRIMARY KEY (bucket_at, phase)
   ) WITHOUT ROWID`,
-  `CREATE TABLE IF NOT EXISTS observe_operations (
-    bucket_at INTEGER NOT NULL,
-    version TEXT NOT NULL,
-    operation TEXT NOT NULL CHECK (operation IN (${OPERATION_IDS.map(id => `'${id}'`).join(", ")})),
-    workload_class TEXT NOT NULL,
-    synthetic INTEGER NOT NULL CHECK (synthetic IN (0, 1)),
-    count INTEGER NOT NULL,
-    lag_count INTEGER NOT NULL DEFAULT 0,
-    lag_ms_max INTEGER NOT NULL DEFAULT 0,
-    lag_ms_sum INTEGER NOT NULL DEFAULT 0,
-    failed INTEGER NOT NULL,
-    cpu_ms_sum INTEGER NOT NULL,
-    wall_ms_sum INTEGER NOT NULL,
-    rows_read INTEGER NOT NULL,
-    rows_written INTEGER NOT NULL,
-    statements INTEGER NOT NULL,
-    ${OPERATION_WORK_COLUMNS.map(column => `${column} INTEGER NOT NULL DEFAULT 0`).join(",\n    ")},
-    PRIMARY KEY (bucket_at, version, operation, workload_class, synthetic)
-  ) WITHOUT ROWID`,
+  OPERATION_STATEMENT,
   `CREATE TABLE IF NOT EXISTS observe_outcomes (
     bucket_at INTEGER NOT NULL,
     version TEXT NOT NULL,
@@ -445,9 +446,20 @@ const STATEMENTS = [
   ) WITHOUT ROWID`
 ];
 
+function upgradeOperations(db: SqlStatements): void {
+  if (!db.rows<{ name: string }>("PRAGMA table_info(observe_operations)").some(column => column.name === "synthetic")) return;
+  db.run("DELETE FROM observe_operations WHERE synthetic = 1");
+  db.run("ALTER TABLE observe_operations RENAME TO observe_operations_old");
+  db.run(OPERATION_STATEMENT);
+  const columns = ["bucket_at", "version", "operation", "workload_class", "count", "lag_count", "lag_ms_max", "lag_ms_sum", "failed", "cpu_ms_sum", "wall_ms_sum", "rows_read", "rows_written", "statements", ...OPERATION_WORK_COLUMNS].join(", ");
+  db.run(`INSERT INTO observe_operations (${columns}) SELECT ${columns} FROM observe_operations_old`);
+  db.run("DROP TABLE observe_operations_old");
+}
+
 export function initializeStore(db: SqlStatements): void {
   db.transaction(() => {
     for (const statement of STATEMENTS) db.run(statement);
+    upgradeOperations(db);
     upgradeCountEntriesView(db);
     upgradeOccurrenceSources(db);
     if (!db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at")) {
@@ -811,7 +823,7 @@ function operationWork(summary: OperationSummary): Partial<Record<OperationWorkC
 function accumulateOperation(buckets: Map<string, OperationBucket>, invocation: PreparedInvocation, summary: OperationSummary, nowMs: number): void {
   const version = invocation.version ?? "";
   const bucketAt = eventBucket(invocation.eventAtMs, nowMs, OPERATION_BUCKET_MS);
-  const key = [bucketAt, version, summary.operation, workloadClass(summary), summary.synthetic ? 1 : 0].join("\u0000");
+  const key = [bucketAt, version, summary.operation, workloadClass(summary)].join("\u0000");
   let bucket = buckets.get(key);
   if (bucket === undefined) {
     bucket = { bucketAt, version, summary, count: 0, lagMax: 0, lagSum: 0, failed: 0, cpuMs: 0, wallMs: 0, rowsRead: 0, rowsWritten: 0, statements: 0, work: Object.fromEntries(OPERATION_WORK_COLUMNS.map(column => [column, 0])) as Record<OperationWorkColumn, number> };
@@ -836,9 +848,9 @@ function recordOperations(db: SqlStatements, buckets: ReadonlyMap<string, Operat
   for (const bucket of buckets.values()) {
     const values = [bucket.count, bucket.count, bucket.lagSum, bucket.failed, bucket.cpuMs, bucket.wallMs, bucket.rowsRead, bucket.rowsWritten, bucket.statements, ...OPERATION_WORK_COLUMNS.map(column => bucket.work[column])];
     db.run(
-      `INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, lag_ms_max, ${additions.join(", ")}) VALUES (?, ?, ?, ?, ?, ?, ${additions.map(() => "?").join(", ")})
-       ON CONFLICT (bucket_at, version, operation, workload_class, synthetic) DO UPDATE SET ${update}`,
-      bucket.bucketAt, bucket.version, bucket.summary.operation, workloadClass(bucket.summary), bucket.summary.synthetic ? 1 : 0, bucket.lagMax, ...values
+      `INSERT INTO observe_operations (bucket_at, version, operation, workload_class, lag_ms_max, ${additions.join(", ")}) VALUES (?, ?, ?, ?, ?, ${additions.map(() => "?").join(", ")})
+       ON CONFLICT (bucket_at, version, operation, workload_class) DO UPDATE SET ${update}`,
+      bucket.bucketAt, bucket.version, bucket.summary.operation, workloadClass(bucket.summary), bucket.lagMax, ...values
     );
   }
 }
@@ -953,7 +965,7 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
     db.run("DELETE FROM observe_operations WHERE bucket_at <= ?", cutoff - OPERATION_BUCKET_MS);
     const operationExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_operations") - MAX_RETAINED_OPERATION_ROWS, CLEANUP_BATCH);
     if (operationExcess > 0) {
-      db.run("DELETE FROM observe_operations WHERE (bucket_at, version, operation, workload_class, synthetic) IN (SELECT bucket_at, version, operation, workload_class, synthetic FROM observe_operations ORDER BY bucket_at LIMIT ?)", operationExcess);
+      db.run("DELETE FROM observe_operations WHERE (bucket_at, version, operation, workload_class) IN (SELECT bucket_at, version, operation, workload_class FROM observe_operations ORDER BY bucket_at LIMIT ?)", operationExcess);
     }
     db.run("DELETE FROM observe_outcomes WHERE bucket_at <= ?", cutoff - OUTCOME_BUCKET_MS);
     const outcomeExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_outcomes") - MAX_RETAINED_OUTCOME_ROWS, CLEANUP_BATCH);
@@ -1444,7 +1456,6 @@ export interface OperationWindowRow {
   readonly version: string;
   readonly operation: OperationId;
   readonly workloadClass: string;
-  readonly synthetic: boolean;
   readonly count: number;
   readonly failed: number;
   readonly cpuMsSum: number;
@@ -1499,7 +1510,7 @@ export interface StatsWindow {
 }
 
 interface StoredOperationRow {
-  bucket_at: number; version: string; operation: OperationId; workload_class: string; synthetic: number; count: number; failed: number;
+  bucket_at: number; version: string; operation: OperationId; workload_class: string; count: number; failed: number;
   cpu_ms_sum: number; wall_ms_sum: number; rows_read: number; rows_written: number; statements: number; lag_count: number; lag_ms_max: number; lag_ms_sum: number;
 }
 
@@ -1525,10 +1536,10 @@ export function statsWindow(db: SqlStatements, query: WindowQuery, sampling: Sam
     }
   }
   const operations = db.rows<StoredOperationRow & Record<OperationWorkColumn, number>>(
-    `SELECT bucket_at, version, operation, workload_class, synthetic, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements, lag_count, lag_ms_max, lag_ms_sum, ${columns.join(", ")}
-     FROM observe_operations WHERE ${filters.join(" AND ")} ORDER BY bucket_at, version, operation, workload_class, synthetic`, ...params
+    `SELECT bucket_at, version, operation, workload_class, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements, lag_count, lag_ms_max, lag_ms_sum, ${columns.join(", ")}
+     FROM observe_operations WHERE ${filters.join(" AND ")} ORDER BY bucket_at, version, operation, workload_class`, ...params
   ).map((row): OperationWindowRow => ({
-    bucketAt: row.bucket_at, version: row.version, operation: row.operation, workloadClass: row.workload_class, synthetic: row.synthetic === 1, count: row.count, failed: row.failed,
+    bucketAt: row.bucket_at, version: row.version, operation: row.operation, workloadClass: row.workload_class, count: row.count, failed: row.failed,
     cpuMsSum: row.cpu_ms_sum, wallMsSum: row.wall_ms_sum, rowsRead: row.rows_read, rowsWritten: row.rows_written, statements: row.statements,
     lagCount: row.lag_count, lagMsMax: row.lag_ms_max, lagMsSum: row.lag_ms_sum,
     work: Object.fromEntries(columns.map(column => [WORK_FIELDS[column], row[column]])) as OperationWorkTotals

@@ -134,9 +134,7 @@ make standby-deploy
 Both need `STANDBY_SSH_CONFIG` (host alias `stats-standby`, jumping through
 Threadripper with the pinned guest host key) and `STATS_ROLLOUT`, Stuff's
 `deploy/openorange/bin/rollout`. Deploying also needs
-`STATS_CHECK_CREDENTIAL_FILE` and `STATSCTL` for the functional check
-(currently `~/.config/stats/synthetic-check.json` and
-`~/.local/state/openorange/rollout/tools/statsctl`).
+`STATS_CHECK_HOSTS` (the comma-separated real host names) and `STATSCTL` for the functional check.
 
 `deploy/orange/standby-deploy.mts` refuses unless the standby's running app is
 its selected app, Lisa's recovery route names the standby as writer, and
@@ -150,7 +148,7 @@ binding the staged digest, the selected runtime digest and the check logs,
 plus a policy, to
 `~/.local/state/openorange/apps/<app>/<time>/`, and runs `rollout start
 --target-kind native-app`. The policy allows 120 s for the restarted app to
-pass the functional check (synthetic ingest with readback), then requires
+pass the functional check (fresh receipts from all expected hosts), then requires
 every check over a 120 s window, every 30 s. One lease covers
 writer-authority recheck, activation, verification and conditional recovery; recovery reactivates the
 previous app only while this run's candidate is still selected. Exit codes are
@@ -293,8 +291,8 @@ change and a real repair of the spin.
 list, the `native-stats` unit and `provision.sh`, which restores a sealed
 capture onto a fresh Alpine 3.24 cloud guest without network access and
 installs the declared Engine, runtime and app. `recreate.sh` runs it on a
-disposable guest and checks ingest, history, duplicates, the app identity and
-Engine drift before and after a reboot. It has not passed end to end yet, and
+disposable guest and checks real host freshness, the app identity and Engine drift
+before and after a reboot. The expected hosts must deliver to the isolated guest. It has not passed end to end yet, and
 it must not run on the host whose disk holds this writer
 ([record](../bench/results/2026-11-22-guest-recreation/README.md)).
 
@@ -665,17 +663,17 @@ by Stuff. `make standby-deploy-check` is read-only and takes no lease.
 The rollout policy can invoke `deploy/orange/functional-check.mjs` with
 `--target-kind` (`native` for runtime releases, `native-app` for app releases,
 which also requires the collector on the release), `--rollout`, `--ssh-config`,
-`--host`, `--credential-file`, and `--statsctl`
+`--host`, `--hosts`, and `--statsctl`
 (or `STATS_ROLLOUT`, `STANDBY_SSH_CONFIG`, `STATS_ROLLOUT_HOST`,
-`STATS_CHECK_CREDENTIAL_FILE` and `STATSCTL`). Pass them as arguments when a
+`STATS_CHECK_HOSTS` and `STATSCTL`). Pass them as arguments when a
 supervised watchdog runs recovery, since it does not inherit the operator's
 environment. The controller supplies `ROLLOUT_RELEASE` and `ROLLOUT_DIGEST`. The check verifies target identity
-before and after the synthetic ingest, including process continuity.
+before and after the host freshness check, including process continuity.
 
 ## Independent observer
 
 `deploy/observer/observer.mjs` checks public health and host freshness every
-round, and synthetic ingest with exact readback every 5 minutes. Optional
+round. Optional
 `--http NAME=URL,...` and `--tcp NAME=HOST:PORT,...` lists add named checks;
 on Threadripper they cover the Niceforge forge's public health (`niceforge`),
 its Git SSH port (`niceforge-ssh`), and one public read from each Stuff
@@ -709,7 +707,6 @@ the observer. Layout:
 | --- | --- |
 | `/opt/stats-observer/node-v26.13.1-linux-x64-musl/` | Node from unofficial-builds; `.tar.xz` SHA-256 `1b8a8a393c7fa5b2f66eaf0314aaa23c2f3cd3a3be14d5c7bac011bf9de236ea` |
 | `/opt/stats-observer/tools/` | `observer.mjs`, the bundled `statsctl-0.1.0.mjs` and its `statsctl` wrapper |
-| `/etc/stats-observer/synthetic-check.json` | synthetic-check host credential, `stats-observer` mode 0600 |
 | `/etc/stats-observer/stuff-content.json` | content targets, root:stats-observer 0640 |
 | `/var/lib/stats-observer/` | `evidence.jsonl`, `content.jsonl` and their rotations, `alerts.jsonl` |
 | `/var/log/stats-observer/observer.log` | stdout and stderr |
@@ -724,15 +721,14 @@ sh deploy/observer/install.sh openrc deploy/observer/openrc.template stats-obser
   /opt/stats-observer/node-v26.13.1-linux-x64-musl/bin/node /opt/stats-observer/tools/observer.mjs \
   /var/lib/stats-observer /home/josh/.local/share/stats-live-recovery/20261118 \
   /opt/stats-observer/tools/statsctl lisa,threadripper https://stats.17166969.xyz/health \
-  /etc/stats-observer/synthetic-check.json 60 \
+  60 \
   --http niceforge=https://niceforge.17166969.xyz/api/forge/v1/health,crates=https://crates.17166969.xyz/current/registry/config.json,npm=https://npm.17166969.xyz/current/,pypi=https://pypi.17166969.xyz/current/simple/,mirror=https://mirror.17166969.xyz/current/SHA256SUMS \
   --tcp niceforge-ssh=100.98.145.91:12222 \
   --content-file /etc/stats-observer/stuff-content.json --content-interval-s 15
 doas install -m 755 stats-observer.initd /etc/init.d/stats-observer
 ```
 
-Run only one observer per synthetic credential. The workstation's launchd
-observer is retired; its evidence through 2026-11-21 01:08 UTC stays in
+The workstation's launchd observer is retired; its evidence through 2026-11-21 01:08 UTC stays in
 `~/.local/state/stats-observer/`.
 
 
@@ -751,7 +747,6 @@ target too, so the watchdog loses nothing by sharing its fate.
 | `~/.local/state/openorange/rollout/policy-standby.json` | rollout policy; the functional check takes every input as an argument |
 | `~/.local/state/openorange/rollout/tools/` | `functional-check-f7d2d65.mjs`, bundled `statsctl` and its wrapper |
 | `~/.config/stats/standby/` | guest key, pinned host key and `ssh_config` (`stats-standby`, direct to `127.0.0.1:49177`) |
-| `~/.config/stats/synthetic-check.json` | synthetic-check host credential, mode 0600 |
 
 The watchdog is the OpenRC service `openorange-rollout-watchdog`. It runs as
 `josh` under `supervise-daemon`, which respawns it after 10 s, and logs to

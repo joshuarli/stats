@@ -15,11 +15,11 @@ const V2 = "00000000-0000-4000-8000-000000000102";
 const H = 3_600_000;
 const START = T0 - T0 % OPERATION_BUCKET_MS;
 const INGEST: OperationSummary = {
-  operation: "host.ingest", synthetic: false, rows: { read: 3, written: 5, statements: 4 },
+  operation: "host.ingest", rows: { read: 3, written: 5, statements: 4 },
   work: { received: 10, persisted: 7, duplicate: 2, rejected: { invalid_sample: 1, too_old: 0, conflict: 0 }, inputBytes: 900 }
 };
 const HISTORY: OperationSummary = {
-  operation: "host.history", synthetic: false, rows: { read: 10, written: 0, statements: 2 }, workloadClass: "1h:cpu",
+  operation: "host.history", rows: { read: 10, written: 0, statements: 2 }, workloadClass: "1h:cpu",
   work: { points: 60, cells: 120, outputBytes: 4000, cache: "rebuilt" }
 };
 
@@ -49,7 +49,7 @@ await test("the window is half-open and sums operation, outcome and observed cou
   const db = database();
   await receive(db, START, V1, INGEST);
   await receive(db, START + 10, V1, INGEST);
-  await receive(db, START + OPERATION_BUCKET_MS, V1, { ...INGEST, synthetic: true });
+  await receive(db, START + OPERATION_BUCKET_MS, V1, INGEST);
   await receive(db, START + 2 * OPERATION_BUCKET_MS, V1, INGEST);
   await receive(db, START, V1, HISTORY);
   const events: OutcomeEvent[] = [
@@ -60,13 +60,15 @@ await test("the window is half-open and sums operation, outcome and observed cou
   ingest(db, [], START + 2 * OPERATION_BUCKET_MS + 1000, events);
   const window = statsWindow(db, { fromMs: START, toMs: START + 2 * OPERATION_BUCKET_MS, operation: "host.ingest" });
   assert.equal(window.filterRevision, OBSERVE_FILTER_REVISION);
-  assert.deepEqual(window.operations.map(row => [row.bucketAt - START, row.synthetic, row.count, row.work.persisted, row.rowsWritten]), [[0, false, 2, 14, 10], [OPERATION_BUCKET_MS, true, 1, 7, 5]]);
+  assert.deepEqual(window.operations.map(row => [row.bucketAt - START, row.count, row.work.persisted, row.rowsWritten]), [[0, 2, 14, 10], [OPERATION_BUCKET_MS, 1, 7, 5]]);
   assert.deepEqual(window.outcomes.map(row => [row.outcome, row.count, row.filterRevision]), [["excluded-status:404", 2, OBSERVE_FILTER_REVISION]]);
   assert.deepEqual(window.invocations.map(row => [row.bucketAt - START, row.stage, row.count]), [[0, "worker", 3], [OPERATION_BUCKET_MS, "worker", 1]]);
   assert.ok(window.lag.operations.count > 0 && window.lag.operations.maxMs === 1000);
   const classed = statsWindow(db, { fromMs: START, toMs: START + OPERATION_BUCKET_MS, operation: "host.history", workloadClass: "other" });
   assert.deepEqual(classed.operations, []);
   assert.deepEqual(decodeStatsWindow(JSON.parse(JSON.stringify(window))), window);
+  const extra = { ...window, operations: window.operations.map(row => ({ ...row, synthetic: false, unrelated: 1 })) };
+  assert.deepEqual(decodeStatsWindow(extra), window);
 });
 
 await test("the window route validates its bounds and filters strictly", async () => {

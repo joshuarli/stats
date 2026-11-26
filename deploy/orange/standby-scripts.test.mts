@@ -92,7 +92,7 @@ function fixture(): Fixture {
       if (file === 'rollout' && args[0] === 'start') return { status: behaviour.startStatus, stdout: '{"run_id":"r","run":"/journals/r"}\n{"state":"x"}\n' };
       throw new Error(`unexpected command ${file} ${args.join(' ')}`);
     };
-    return { mode: 'deploy', root, state: join(root, 'state'), sshConfig: '/cfg/ssh_config', rollout: 'rollout', credential: '/cfg/credential.json', statsctl: '/tools/statsctl', node: 'node', run, report: () => {}, now: () => Date.UTC(2026, 10, 21, 23, 30) };
+    return { mode: 'deploy', root, state: join(root, 'state'), sshConfig: '/cfg/ssh_config', rollout: 'rollout', hosts: 'lisa,threadripper', statsctl: '/tools/statsctl', node: 'node', run, report: () => {}, now: () => Date.UTC(2026, 10, 21, 23, 30) };
   };
   return { root, calls, effects };
 }

@@ -174,7 +174,7 @@ function windowBody(query: URLSearchParams, rows: { operations?: unknown[]; coun
 
 await test("observe operations totals stats's operation summaries and a sampled service's exact counts under the policy's operation names", async () => {
   const summary = (bucketAt: number, operation: string, n: number) => ({
-    bucketAt, version: "v1", operation, workloadClass: "", synthetic: false, count: n, failed: n - 1, cpuMsSum: 2 * n, wallMsSum: 10 * n,
+    bucketAt, version: "v1", operation, workloadClass: "", count: n, failed: n - 1, cpuMsSum: 2 * n, wallMsSum: 10 * n,
     rowsRead: 3 * n, rowsWritten: n, statements: 4 * n, lagCount: n, lagMsMax: 100 * n, lagMsSum: 50 * n, work: Object.fromEntries(WORK_FIELDS.map(field => [field, 0]))
   });
   const none = { rowAccounts: 0, rowsRead: 0, rowsWritten: 0, statements: 0, workLagCount: 0, workLagMsMax: 0, workLagMsSum: 0 };
@@ -201,8 +201,8 @@ await test("observe operations totals stats's operation summaries and a sampled 
     assert.equal(stats.project, "stats");
     assert.equal(stats.payload.source, "summaries");
     assert.deepEqual(stats.payload.operations, [
-      { operation: "host.ingest", workloadClass: "", synthetic: false, count: 5, failed: 3, cpuMsSum: 10, wallMsSum: 50, rowsRead: 15, rowsWritten: 5, statements: 20, lag: { count: 5, maxMs: 300, sumMs: 250 } },
-      { operation: "collector.record", workloadClass: "", synthetic: false, count: 1, failed: 0, cpuMsSum: 2, wallMsSum: 10, rowsRead: 3, rowsWritten: 1, statements: 4, lag: { count: 1, maxMs: 100, sumMs: 50 } }
+      { operation: "host.ingest", workloadClass: "", count: 5, failed: 3, cpuMsSum: 10, wallMsSum: 50, rowsRead: 15, rowsWritten: 5, statements: 20, lag: { count: 5, maxMs: 300, sumMs: 250 } },
+      { operation: "collector.record", workloadClass: "", count: 1, failed: 0, cpuMsSum: 2, wallMsSum: 10, rowsRead: 3, rowsWritten: 1, statements: 4, lag: { count: 1, maxMs: 100, sumMs: 50 } }
     ]);
     const query = new URL(origin.seen[0]!.url, origin.origin).searchParams;
     const [fromMs, toMs] = [Number(query.get("from")), Number(query.get("to"))];
