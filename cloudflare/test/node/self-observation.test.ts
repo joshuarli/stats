@@ -38,6 +38,11 @@ await test("Node records request operations with linked trace context without ob
     assert.equal(operation.work["synthetic"], 1);
     assert.equal(operation.release, "release-123");
     assert.equal(operation.work["sql_rows_read"], undefined);
+    const invalidTrace = await fetch(`${origin}/api/v1/hosts/${created.value.hostId}/history?range=24h&kind=summary`, { headers: { ...headers, traceparent: `00-${"0".repeat(32)}-${"b".repeat(16)}-01` } });
+    await invalidTrace.arrayBuffer();
+    await installation.application!.flush();
+    const traces = (await installation.observe.forService("stats").external("stats", {})).map(row => row.event).filter(event => event.operation === "host.history").map(event => event.trace!.traceId);
+    assert.ok(traces.some(trace => /^[a-f0-9]{32}$/u.test(trace) && trace !== "0".repeat(32) && trace !== "a".repeat(32)));
     const service = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [created.value.hostId] }) }));
     assert.equal(service.status, 201);
     const credentials = await service.json() as { ingestToken: string };
