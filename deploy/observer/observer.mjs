@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { Agent as HttpAgent, request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
-import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, statfsSync } from 'node:fs';
+import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, statfsSync, unlinkSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -34,6 +34,7 @@ const CONTENT_CONCURRENCY = 4;
 export class EvidenceExhausted extends Error { name = 'EvidenceExhausted'; }
 function digestFile(path) { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
 export function appendRotating(path, record, { rotateBytes = ROTATE_BYTES, rotatedLimit = ROTATED_LIMIT, reserveBytes = RESERVE_BYTES } = {}) {
+  if (!Number.isSafeInteger(rotatedLimit) || rotatedLimit < 1) throw new Error('rotated limit must be positive');
   const directory = dirname(path);
   const fs = statfsSync(directory);
   if (fs.bavail * fs.bsize < reserveBytes) throw new EvidenceExhausted('evidence volume below its reserve');
@@ -42,8 +43,10 @@ export function appendRotating(path, record, { rotateBytes = ROTATE_BYTES, rotat
   if (size >= rotateBytes) {
     const base = path.replace(/\.jsonl$/, '');
     const rotated = readdirSync(directory).filter(name => name.startsWith(`${base.slice(directory.length + 1)}-`) && name.endsWith('.jsonl'));
-    if (rotated.length >= rotatedLimit) throw new EvidenceExhausted('rotated evidence limit reached');
-    const target = `${base}-${new Date().toISOString().replace(/[-:.]/g, '')}.jsonl`;
+    rotated.sort();
+    while (rotated.length >= rotatedLimit) unlinkSync(resolve(directory, rotated.shift()));
+    let target = `${base}-${new Date().toISOString().replace(/[-:.]/g, '')}.jsonl`;
+    while (rotated.includes(target.slice(directory.length + 1))) target = target.replace(/\.jsonl$/, '0.jsonl');
     const sha256 = digestFile(path);
     renameSync(path, target);
     appendDurable(path, { at: new Date().toISOString(), checkpoint: { rotatedTo: target.slice(directory.length + 1), bytes: size, sha256 } });
@@ -99,6 +102,30 @@ export function parseTargets(value, kind) {
 export async function httpCheck(url) {
   try { const response = await fetch(url, { signal: AbortSignal.timeout(15000), redirect: 'manual' }); return { ok: response.ok }; } catch { return { ok: false }; }
 }
+export async function healthCheck(url) {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(2000), redirect: 'manual' });
+    if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json' || response.body === null) {
+      await response.body?.cancel();
+      return { ok: false };
+    }
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 4096) { await reader.cancel(); return { ok: false }; }
+      chunks.push(value);
+    }
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+    const status = x => x === 'ok' || x === 'degraded' || x === 'down';
+    const checks = object(value.checks) && Object.values(value.checks).every(check => object(check) && status(check.status) && (check.ms === undefined || (Number.isSafeInteger(check.ms) && check.ms >= 0)) && (check.detail === undefined || typeof check.detail === 'string'));
+    return { ok: value.service === 'stats' && (value.status === 'ok' || value.status === 'degraded') && checks && (value.release === undefined || typeof value.release === 'string') };
+  } catch { return { ok: false }; }
+}
 export function parseContentTargets(text) {
   const targets = JSON.parse(text);
   if (!Array.isArray(targets)) throw new Error('content targets must be an array');
@@ -110,8 +137,9 @@ export function parseContentTargets(text) {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`invalid content URL for ${target.name}`);
     if (target.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(target.sha256)) throw new Error(`invalid sha256 for ${target.name}`);
     if (target.resolve !== undefined && !/^\d{1,3}(\.\d{1,3}){3}$/.test(target.resolve)) throw new Error(`invalid resolve address for ${target.name}`);
+    if (target.intervalS !== undefined && (!Number.isFinite(target.intervalS) || target.intervalS <= 0)) throw new Error(`invalid interval for ${target.name}`);
     if (!['public', 'direct'].includes(target.path)) throw new Error(`content target ${target.name} needs path public or direct`);
-    return { name: target.name, url: url.href, path: target.path, ...(target.sha256 ? { sha256: target.sha256 } : {}), ...(target.resolve ? { resolve: target.resolve } : {}) };
+    return { name: target.name, url: url.href, path: target.path, ...(target.sha256 ? { sha256: target.sha256 } : {}), ...(target.resolve ? { resolve: target.resolve } : {}), ...(target.intervalS === undefined ? {} : { intervalS: target.intervalS }) };
   });
 }
 const PATH_AGENTS = new Map();
@@ -153,18 +181,29 @@ export function contentCheck(target, timeoutMs = 120000) {
     req.end();
   });
 }
-async function contentLoop(statePath, targets, intervalMs, outbox) {
+async function contentLoop(statePath, targets, intervalMs, outbox, rotatedLimit) {
   let exhausted = false;
+  const nextCheck = new Map();
+  const largeTargets = new Set();
   for (;;) {
     const round = new Date().toISOString();
     const results = [];
     let next = 0;
-    await Promise.all(Array.from({ length: Math.min(CONTENT_CONCURRENCY, targets.length) }, async () => {
-      while (next < targets.length) { const target = targets[next++]; results.push([target, await contentCheck(target)]); }
+    const due = targets.filter(target => (nextCheck.get(target.name) ?? 0) <= Date.now());
+    await Promise.all(Array.from({ length: Math.min(CONTENT_CONCURRENCY, due.length) }, async () => {
+      while (next < due.length) {
+        const target = due[next++];
+        const result = await contentCheck(target);
+        if (result.bytes !== undefined) {
+          if (result.bytes > 256 * 1024) largeTargets.add(target.name); else if (result.ok) largeTargets.delete(target.name);
+        }
+        nextCheck.set(target.name, Date.now() + (target.intervalS === undefined ? (largeTargets.has(target.name) ? 300000 : intervalMs) : target.intervalS * 1000));
+        results.push([target, result]);
+      }
     }));
     for (const [target, result] of results) {
       try {
-        appendRotating(resolve(statePath, 'content.jsonl'), { at: new Date().toISOString(), round, condition: target.name, ...result });
+        appendRotating(resolve(statePath, 'content.jsonl'), { at: new Date().toISOString(), round, condition: target.name, ...result }, { rotatedLimit });
         exhausted = false;
       } catch (error) {
         if (!(error instanceof EvidenceExhausted)) throw error;
@@ -194,19 +233,31 @@ export async function main(args) {
   const contentTargets = config['content-file'] === undefined ? [] : parseContentTargets(readFileSync(config['content-file'], 'utf8'));
   const contentInterval = Number(config['content-interval-s'] ?? '10');
   if (!Number.isFinite(contentInterval) || contentInterval <= 0) throw new Error('--content-interval-s must be positive');
+  const rotatedLimit = Number(config['retained-count'] ?? ROTATED_LIMIT);
+  if (!Number.isSafeInteger(rotatedLimit) || rotatedLimit < 1) throw new Error('--retained-count must be a positive integer');
   mkdirSync(state, { recursive: true, mode: 0o700 });
   const statePath = stateOutsideCandidate(state, candidate);
   const outbox = new Outbox(statePath);
-  if (contentTargets.length > 0) contentLoop(statePath, contentTargets, contentInterval * 1000, outbox).catch(error => { console.error(`content loop failed: ${error.message}`); process.exit(1); });
+  if (contentTargets.length > 0) contentLoop(statePath, contentTargets, contentInterval * 1000, outbox, rotatedLimit).catch(error => { console.error(`content loop failed: ${error.message}`); process.exit(1); });
+  let exhausted = false;
   for (;;) {
-    const checks = [['hosts', () => command(statsctl, ['check', 'hosts', '--hosts', hosts, '--json'])], ['health', () => httpCheck(health)],
+    const fs = statfsSync(statePath);
+    outbox.transition('evidence-space', fs.bavail * fs.bsize < RESERVE_BYTES * 2);
+    const checks = [['hosts', () => command(statsctl, ['check', 'hosts', '--hosts', hosts, '--json'])], ['health', () => healthCheck(health)],
       ...httpTargets.map(([name, url]) => [name, () => httpCheck(url)]), ...tcpTargets.map(([name, address]) => [name, () => tcpCheck(address)])];
     for (const [condition, check] of checks) {
       const result = await check();
-      appendRotating(resolve(statePath, 'evidence.jsonl'), { at: new Date().toISOString(), condition, ...result });
+      try {
+        appendRotating(resolve(statePath, 'evidence.jsonl'), { at: new Date().toISOString(), condition, ...result }, { rotatedLimit });
+        exhausted = false;
+      } catch (error) {
+        if (!(error instanceof EvidenceExhausted)) throw error;
+        if (!exhausted) appendDurable(resolve(statePath, 'evidence-exhausted.jsonl'), { at: new Date().toISOString(), condition: 'evidence', ok: false, exhausted: error.message });
+        exhausted = true;
+      }
       outbox.transition(condition, !result.ok);
     }
     await delay(Number(interval) * 1000);
   }
 }
-if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) main(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
+if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) main(process.argv.slice(2)).catch(error => { console.error(error.message); process.exit(1); });
