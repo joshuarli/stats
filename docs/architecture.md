@@ -484,6 +484,9 @@ it plugs into the handler:
   `$STATS_DATA_DIR/stats.sqlite`. One process owns the file, which gives the
   single-writer guarantee the Durable Object gives. Each observation service
   owns `stats.sqlite.observe/<service>.sqlite`, its capacity limits and caches.
+  Metrics use `stats.sqlite.metrics/stats-infra.sqlite`. File-backed databases
+  use WAL, FULL synchronous writes, exclusive locks, a one-second busy timeout,
+  and a truncating checkpoint every minute.
   The registry opens at most 256 stores, each with an exclusive writer lock.
   A separate scheduler cleans them on startup and follows expiry and backlog,
   with an hourly maintenance ceiling.
@@ -494,15 +497,12 @@ it plugs into the handler:
   The installation file retains all original observation tables, including
   artifacts and rollouts with ambiguous ownership, as a recoverable quarantine
   unavailable through service APIs.
-- **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
-  accepted only when the TCP peer is loopback (or the connection is on the
-  Unix socket named by `STATS_LISTEN`, which has no TCP peer and is
-  reachable only through filesystem permissions) and carries a nonempty
-  `Tailscale-User-Login` header; otherwise it gets `401 unauthorized` before
-  any data is read. The server is meant to sit behind `tailscale serve`, which
-  sets that header for tailnet users; it does not set it for tagged machines,
-  so they cannot use a Node origin. Ingest ignores
-  Tailscale headers and requires the host bearer token, as on the Worker.
+- **Auth.** In the default `tailscale` mode, the server accepts a non-ingest,
+  non-health request from a loopback TCP peer or the configured Unix socket
+  only when it carries `Tailscale-User-Login`. In `gateway` mode, the shared
+  gateway decision verifies the file-backed secret and asserted tailnet identity.
+  The gateway must remove client-supplied identity headers and protect access
+  to the listener. Both modes authenticate ingest separately by bearer token.
   On both targets a non-GET, non-HEAD, non-OPTIONS `/api/v1` request is
   rejected with `403 forbidden` when its `Origin` is not its own origin or
   its `Sec-Fetch-Site` is `cross-site`; the Node server derives its own origin
@@ -510,6 +510,12 @@ it plugs into the handler:
 - **Assets.** `src/node/assets.ts` serves the Vite output in
   `cloudflare/.cloudflare/output/v0/workers/default/assets`, with `/` as
   `index.html` and no path outside that directory.
+- **Observations.** With a release configured, request and operation events
+  enter the bounded application producer and the local `stats` observation
+  store. HTTP header and body completion times are separate. A ten-second
+  sampler stores process, event-loop, GC, request, delivery, and SQLite
+  observations in MetricStore. The authenticated `/api/v1/runtime` route
+  reads the current snapshot even if sampling cannot persist it.
 - **Encoding.** workerd compresses a body whose `Content-Encoding` the handler
   sets; the Node writer compresses negotiated history frames with `zlib`.
 

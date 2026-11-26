@@ -38,7 +38,7 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
   return bytes;
 }
 
-async function serve(peer: string | null = null, socket = false): Promise<Served & { harness: ReturnType<typeof openHarness>; assets: string }> {
+async function serve(peer: string | null = null, socket = false, auth?: { readonly kind: "gateway"; readonly secret: string }): Promise<Served & { harness: ReturnType<typeof openHarness>; assets: string }> {
   const harness = openHarness();
   const assets = scratchDirectory("node-assets");
   mkdirSync(join(assets, "assets"));
@@ -46,7 +46,7 @@ async function serve(peer: string | null = null, socket = false): Promise<Served
   writeFileSync(join(assets, "assets", "app-123.js"), "export {};");
   writeFileSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), "secret");
   symlinkSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), join(assets, "escape.txt"));
-  const listener = statsRequestListener({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), transport: socket ? "unix" : "tcp" });
+  const listener = statsRequestListener({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), transport: socket ? "unix" : "tcp", auth });
   const socketPath = join(scratchDirectory("sock"), "s.sock");
   const server = createServer((incoming: IncomingMessage, outgoing: ServerResponse) => {
     if (peer !== null) Object.defineProperty(incoming.socket, "remoteAddress", { value: peer, configurable: true });
@@ -126,6 +126,19 @@ await test("any Tailscale login that tailscale serve asserts is admitted", async
   } finally {
     await served.close();
   }
+});
+
+await test("gateway authentication requires its secret and a valid asserted identity", async () => {
+  const served = await serve(null, false, { kind: "gateway", secret: "shared-secret" });
+  try {
+    for (const headers of [
+      {}, login(ALLOWED),
+      { "Stats-Tailnet-Identity": "user:owner@example.com" },
+      { "Stats-Gateway-Secret": "wrong", "Stats-Tailnet-Identity": "user:owner@example.com" },
+      { "Stats-Gateway-Secret": "shared-secret", "Stats-Tailnet-Identity": "owner@example.com" }
+    ]) assert.equal((await served.fetch("/api/v1/hosts", { headers })).status, 401);
+    assert.equal((await served.fetch("/api/v1/hosts", { headers: { "Stats-Gateway-Secret": "shared-secret", "Stats-Tailnet-Identity": "user:owner@example.com" } })).status, 200);
+  } finally { await served.close(); }
 });
 
 await test("cross-site writes to /api/v1 are rejected before any host is created, while same-origin and header-less JSON writes succeed", async () => {
@@ -248,10 +261,18 @@ await test("the Node configuration fails loudly on a missing or invalid value an
     const valid = { STATS_DATA_DIR: directory };
     const config = nodeConfig(valid);
     assert.equal(config.databasePath, join(directory, DATABASE_FILE));
+    assert.deepEqual(config.auth, { kind: "tailscale" });
+    const secretFile = join(directory, "gateway-secret");
+    writeFileSync(secretFile, "shared-secret\n");
+    assert.deepEqual(nodeConfig({ ...valid, STATS_AUTH: "gateway", STATS_GATEWAY_SECRET_FILE: secretFile }).auth, { kind: "gateway", secret: "shared-secret" });
     assert.deepEqual(config.listen, { kind: "tcp", host: "127.0.0.1", port: 18791 });
     assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: "[::1]:0" }).listen, { kind: "tcp", host: "::1", port: 0 });
     assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: `unix:${join(directory, "s.sock")}` }).listen, { kind: "unix", path: join(directory, "s.sock") });
     for (const [env, message] of [
+      [{ ...valid, STATS_SOURCE_COMMIT: "invalid secret" }, /STATS_SOURCE_COMMIT/u],
+      [{ ...valid, STATS_AUTH: "invalid" }, /STATS_AUTH/u],
+      [{ ...valid, STATS_AUTH: "gateway" }, /STATS_GATEWAY_SECRET_FILE/u],
+      [{ ...valid, STATS_AUTH: "gateway", STATS_GATEWAY_SECRET_FILE: join(directory, "absent") }, /STATS_GATEWAY_SECRET_FILE/u],
       [{ ...valid, STATS_DATA_DIR: undefined }, /STATS_DATA_DIR is required/u],
       [{ ...valid, STATS_DATA_DIR: join(directory, "absent") }, /does not exist/u],
       [{ ...valid, STATS_LISTEN: "localhost:18791" }, /STATS_LISTEN/u],

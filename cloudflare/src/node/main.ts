@@ -2,11 +2,15 @@ import { INFRA_SERVICE } from "../../../packages/infra-collector/src/contract.ts
 import type { Server, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
+import { INGEST_SCHEMA_VERSION } from "../observe/ingest/model.ts";
+import { INFRA_METRICS_SCHEMA } from "../metrics/codec.ts";
+import { CATALOG_VERSION } from "../metrics/catalog.ts";
 import { MetricStore } from "../metrics/store.ts";
 import { handleMetricRequest } from "../metrics/http.ts";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
 import { nodeConfig, NodeConfigError, type Listen } from "./config.ts";
 import { DatabaseInUseError, openNodeInstallation, type NodeInstallation } from "./installation.ts";
+import { NodeRuntime } from "./runtime.ts";
 import { createStatsServer, observeHandler } from "./server.ts";
 import { listenOnSocket } from "./socket.ts";
 
@@ -24,23 +28,39 @@ function listenOn(server: Server, listen: Listen): Promise<void> {
 async function main(): Promise<void> {
   const config = nodeConfig(process.env);
   const assets = await openAssets(BUILT_ASSETS);
-  let installation: NodeInstallation;
-  try {
-    installation = openNodeInstallation({ path: config.databasePath, projects: "[]" });
-  } catch (error) {
-    if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
-    throw error;
-  }
   const directory = `${config.databasePath}.metrics`;
   let metrics: MetricStore | undefined;
+  const metricPath = join(directory, `${INFRA_SERVICE}.sqlite`);
+  let runtime: NodeRuntime;
   const metricStore = () => {
     if (metrics === undefined) {
       mkdirSync(directory, { recursive: true });
-      metrics = new MetricStore(join(directory, `${INFRA_SERVICE}.sqlite`));
+      metrics = new MetricStore(metricPath, runtime.database("metrics:infra", metricPath), result => runtime.checkpoint("metrics:infra", result));
     }
     return metrics;
   };
+  runtime = new NodeRuntime(metricStore);
+  let installation: NodeInstallation;
+  try {
+    installation = openNodeInstallation({ path: config.databasePath, projects: "[]", release: process.env["APPLICATION_EVENTS_RELEASE"], runtime });
+  } catch (error) {
+    runtime.stop();
+    if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
+    throw error;
+  }
+  const identity = { release: process.env["APPLICATION_EVENTS_RELEASE"] ?? null, sourceCommit: config.sourceCommit, node: process.version,
+    schemas: { installation: installation.schemaVersion(), applicationEvents: INGEST_SCHEMA_VERSION, metrics: INFRA_METRICS_SCHEMA, metricsCatalog: CATALOG_VERSION, observations: null } };
+  runtime.setIdentity(identity);
+  console.log(JSON.stringify({ event: "startup_identity", ...identity }));
+  const requests = new Set<Promise<void>>();
   const server = createStatsServer({
+    trackRequest: request => {
+      requests.add(request);
+      void request.then(() => { requests.delete(request); });
+    },
+    auth: config.auth,
+    runtime,
+    application: installation.application,
     metricsVerifier: process.env["INFRA_METRICS_TOKEN_SHA256"],
     metrics: request => handleMetricRequest(request, metricStore()),
     installation: request => installation.core.fetch(request),
@@ -61,24 +81,37 @@ async function main(): Promise<void> {
   try {
     await listenOn(server, config.listen);
   } catch (error) {
-    installation.close();
+    runtime.stop();
+    await installation.shutdown();
+    metrics?.close();
     throw error;
   }
+  runtime.sample();
   const address = server.address();
   console.log(JSON.stringify(typeof address === "string" || address === null ? { event: "listening", socket: address } : { event: "listening", host: address.address, port: address.port }));
   const stop = (signal: NodeJS.Signals) => {
     if (draining) return;
     draining = true;
+    runtime.stop();
     console.log(JSON.stringify({ event: "stopping", signal }));
+    const forceConnections = setTimeout(() => server.closeAllConnections(), 8_000);
+    const forceExit = setTimeout(() => {
+      console.error(JSON.stringify({ event: "stop_deadline_exceeded" }));
+      process.exit(1);
+    }, 10_000);
     server.close(error => {
-      installation.close();
-      metrics?.close();
-      if (error !== undefined) {
-        console.error(JSON.stringify({ event: "stop_failed", name: error.name }));
+      void (async () => {
+        await Promise.all(requests);
+        await installation.shutdown();
+        metrics?.close();
+        if (error !== undefined) {
+          console.error(JSON.stringify({ event: "stop_failed", name: error.name }));
+          process.exitCode = 1;
+        } else console.log(JSON.stringify({ event: "stopped" }));
+      })().catch((failure: unknown) => {
+        console.error(JSON.stringify({ event: "stop_failed", name: failure instanceof Error ? failure.name : typeof failure }));
         process.exitCode = 1;
-        return;
-      }
-      console.log(JSON.stringify({ event: "stopped" }));
+      }).finally(() => { clearTimeout(forceConnections); clearTimeout(forceExit); });
     });
     for (const outgoing of inFlight) if (!outgoing.headersSent) outgoing.shouldKeepAlive = false;
     server.closeIdleConnections();

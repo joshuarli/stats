@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
+import { DatabaseSync } from "node:sqlite";
+import { rmSync } from "node:fs";
 import { comparisonBounds, DEPLOYMENT_BUCKET_MS } from "../../src/deployments/compare.ts";
 import { SERVICE_COMPARISON_CAVEAT, type ServiceComparison } from "../../src/deployments/service-compare.ts";
 import { openNodeInstallation } from "../../src/node/installation.ts";
@@ -327,5 +329,42 @@ await test("the Node server probes services on the five-minute boundary with the
     assert.equal(calls.length, 2);
   } finally {
     mock.timers.reset();
+  }
+});
+
+await test("shutdown cancels and joins an active service probe before closing its database", async () => {
+  const start = Math.floor(NOW_MS / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS + 60_000;
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: start });
+  const directory = scratchDirectory("probe-shutdown");
+  let signal: AbortSignal | undefined;
+  let rejectProbe: ((reason?: unknown) => void) | undefined;
+  const installation = openNodeInstallation({
+    path: `${directory}/stats.sqlite`, projects: "[]", clock: { now: () => Date.now() },
+    probeFetch: (_url, init) => new Promise((_resolve, reject) => {
+      signal = init.signal;
+      rejectProbe = reject;
+      init.signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true });
+    })
+  });
+  let closed = false;
+  try {
+    const host = await installation.core.createHost("node-probe");
+    assert.ok(host.ok);
+    const created = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "probe-me", hostIds: [host.value.hostId], healthUrl: "https://probe-me.example.com/up" }) }));
+    assert.equal(created.status, 201);
+    mock.timers.tick(DEPLOYMENT_BUCKET_MS - 60_000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.ok(signal);
+    await installation.shutdown();
+    closed = true;
+    assert.equal(signal.aborted, true);
+    const database = new DatabaseSync(`${directory}/stats.sqlite`, { readOnly: true });
+    try { assert.equal(database.prepare("SELECT COUNT(*) AS count FROM project_samples WHERE project = ?").get("service:probe-me")!["count"], 0); }
+    finally { database.close(); }
+  } finally {
+    rejectProbe?.(new Error("cleanup"));
+    if (!closed) await installation.shutdown();
+    mock.timers.reset();
+    rmSync(directory, { recursive: true, force: true });
   }
 });

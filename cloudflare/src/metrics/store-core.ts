@@ -1,5 +1,5 @@
 import type { SqlDatabase, SqlValue } from "../core/sql.ts";
-import { catalog } from "./catalog.ts";
+import { catalog, nativeCatalog, type NativeMetricValue } from "./catalog.ts";
 import { encodeBatch, type Batch, type Scrape } from "./codec.ts";
 import { seriesPoints } from "./series.ts";
 
@@ -42,6 +42,23 @@ export class MetricStoreCore {
       CREATE TABLE IF NOT EXISTS metric_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;`.split(";")) {
       if (statement.trim()) this.db.run(statement);
     }
+  }
+  recordNativeRuntime(atMs: number, payload: string): void {
+    this.db.transaction(() => {
+      this.db.run("CREATE TABLE IF NOT EXISTS native_runtime_samples (at_ms INTEGER PRIMARY KEY, payload TEXT NOT NULL)");
+      this.db.run("INSERT OR REPLACE INTO native_runtime_samples VALUES (?, ?)", atMs, payload);
+      this.db.run("DELETE FROM native_runtime_samples WHERE at_ms <= ?", atMs - retention);
+      this.db.run("DELETE FROM native_runtime_samples WHERE at_ms IN (SELECT at_ms FROM native_runtime_samples ORDER BY at_ms DESC LIMIT -1 OFFSET 8640)");
+    });
+  }
+  nativeSeries(family: string, from: number, to: number): { atMs: number; value: NativeMetricValue }[] {
+    if (!Object.hasOwn(nativeCatalog, family)) throw new RangeError("unknown native metric family");
+    if (this.db.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_runtime_samples'").length === 0) return [];
+    const rows = this.db.rows<{ at_ms: number; payload: string }>("SELECT at_ms, payload FROM native_runtime_samples WHERE at_ms >= ? AND at_ms <= ? ORDER BY at_ms LIMIT 8640", from, to);
+    return rows.map(row => {
+      const payload = JSON.parse(row.payload) as { families?: Record<string, NativeMetricValue> };
+      return { atMs: row.at_ms, value: payload.families?.[family] ?? null };
+    });
   }
   private prepare(query: string) {
     return {

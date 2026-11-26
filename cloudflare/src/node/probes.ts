@@ -6,6 +6,7 @@ import { TimerScheduler } from "./ports.ts";
 
 export interface ProbeSchedule {
   stop(): void;
+  drain(): Promise<void>;
 }
 
 export function nextProbeAtMs(nowMs: number): number {
@@ -13,13 +14,15 @@ export function nextProbeAtMs(nowMs: number): number {
 }
 
 export function scheduleServiceProbes(options: { readonly core: InstallationCore; readonly clock: Clock; readonly fetch: ProbeFetch; readonly failed: (error: unknown) => void }): ProbeSchedule {
+  const controller = new AbortController();
+  const fetch: ProbeFetch = (url, init) => options.fetch(url, { ...init, signal: AbortSignal.any([init.signal, controller.signal]) });
   const scheduler: TimerScheduler = new TimerScheduler(options.clock, async () => {
     try {
-      await options.core.collectServiceProbes(options.fetch);
+      await options.core.collectServiceProbes(fetch, controller.signal);
     } finally {
       await scheduler.at(nextProbeAtMs(options.clock.now()));
     }
   }, options.failed);
   void scheduler.at(nextProbeAtMs(options.clock.now()));
-  return { stop: () => scheduler.stop() };
+  return { stop: () => { scheduler.stop(); controller.abort(); }, drain: () => scheduler.drain() };
 }

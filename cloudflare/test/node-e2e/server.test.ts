@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import type { AddressInfo } from "node:net";
+import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { agentDeliversABatch } from "../agent-e2e/flow.ts";
 import { identityProxy } from "../cli/node-server.ts";
 
@@ -30,8 +31,8 @@ function launch(env: Record<string, string>): { child: ChildProcess; output: () 
   return { child, output: () => output, exited: () => exit };
 }
 
-async function start(dataDir: string): Promise<Started> {
-  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0" });
+async function start(dataDir: string, extra: Record<string, string> = {}): Promise<Started> {
+  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", ...extra });
   const port = await new Promise<number>((resolvePort, reject) => {
     const timer = setTimeout(() => reject(new Error(`server did not report a port: ${launched.output()}`)), 10_000);
     launched.child.stdout!.on("data", () => {
@@ -208,5 +209,115 @@ await test("the Node server on a Unix socket serves health and an authorized rou
     assert.ok(!existsSync(socket), "the socket is removed on shutdown");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+await test("an acknowledged ingest survives SIGKILL with exact readback", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-kill-"));
+  let server: Started | undefined;
+  try {
+    server = await start(dataDir);
+    const headers = { "Tailscale-User-Login": LOGIN, "content-type": "application/json" };
+    const created = await fetch(`${server.origin}/api/v1/admin/hosts`, { method: "POST", headers, body: JSON.stringify({ name: "durable" }) });
+    assert.equal(created.status, 201);
+    const host = await created.json() as { hostId: string; token: string };
+    const source = JSON.parse(readFileSync(resolve(ROOT, "../fixtures/v2/sources/minimal.json"), "utf8")) as SourceBatch;
+    const frame = encodeFrame({ ...source, hostId: host.hostId, samples: [{ ...source.samples[0]!, atMs: String(Date.now()) }] });
+    const ingest = await fetch(`${server.origin}/ingest/v2/batches`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/vnd.stats.ingest.v2" }, body: frame });
+    assert.equal(ingest.status, 200);
+    const latest = () => fetch(`${server!.origin}/api/v1/hosts/${host.hostId}/latest`, { headers: { "Tailscale-User-Login": LOGIN } });
+    const before = await latest();
+    assert.equal(before.status, 200);
+    const expected = await before.text();
+    assert.ok(existsSync(join(dataDir, "stats.sqlite-wal")));
+    server.child.kill("SIGKILL");
+    assert.equal(await server.exited(), null);
+    server = await start(dataDir);
+    const after = await latest();
+    assert.equal(after.status, 200);
+    assert.equal(await after.text(), expected);
+  } finally {
+    if (server !== undefined && server.child.exitCode === null && server.child.signalCode === null) {
+      server.child.kill("SIGTERM");
+      await server.exited();
+    }
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+await test("SIGTERM finishes within its deadline when a client never completes a request", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-stuck-"));
+  const server = await start(dataDir);
+  const { port } = new URL(server.origin);
+  const stuck = httpRequest({ host: "127.0.0.1", port, path: "/ingest/v2/batches", method: "POST", headers: { authorization: "Bearer nft_drainDRAINdrainDRAINdrainDRAINdrainDRAIN000", "content-type": "application/vnd.stats.ingest.v2", "content-length": "100" } });
+  stuck.on("error", () => {});
+  try {
+    stuck.write("x");
+    await new Promise<void>(resolve => stuck.once("socket", socket => socket.once("connect", () => resolve())));
+    await new Promise<void>(resolve => setTimeout(resolve, 200));
+    server.child.kill("SIGTERM");
+    let timer: NodeJS.Timeout | undefined;
+    const result = await Promise.race([server.exited().then(code => ({ code })), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 12_000); })]);
+    clearTimeout(timer);
+    assert.notEqual(result, null, "server failed to stop with an incomplete request");
+    assert.equal(result!.code, 0, server.output());
+  } finally {
+    stuck.destroy();
+    if (server.child.exitCode === null && server.child.signalCode === null) { server.child.kill("SIGKILL"); await server.exited(); }
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+await test("ten consecutive restarts preserve exact data and recover health within 15 seconds", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-cycles-"));
+  let server: Started | undefined;
+  try {
+    server = await start(dataDir);
+    const created = await fetch(`${server.origin}/api/v1/admin/hosts`, { method: "POST", headers: { "Tailscale-User-Login": LOGIN, "content-type": "application/json" }, body: JSON.stringify({ name: "restart" }) });
+    assert.equal(created.status, 201);
+    const host = await created.json() as { hostId: string; token: string };
+    const source = JSON.parse(readFileSync(resolve(ROOT, "../fixtures/v2/sources/minimal.json"), "utf8")) as SourceBatch;
+    const frame = encodeFrame({ ...source, hostId: host.hostId, samples: [{ ...source.samples[0]!, atMs: String(Date.now()) }] });
+    assert.equal((await fetch(`${server.origin}/ingest/v2/batches`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/vnd.stats.ingest.v2" }, body: frame })).status, 200);
+    const read = () => fetch(`${server!.origin}/api/v1/hosts/${host.hostId}/latest`, { headers: { "Tailscale-User-Login": LOGIN } });
+    const expected = await (await read()).text();
+    for (let cycle = 0; cycle < 10; cycle++) {
+      const started = performance.now();
+      server.child.kill("SIGTERM");
+      assert.equal(await server.exited(), 0, server.output());
+      server = await start(dataDir);
+      assert.equal((await fetch(`${server.origin}/health`)).status, 200);
+      assert.equal((await fetch(`${server.origin}/api/v1/runtime`, { headers: { "Tailscale-User-Login": LOGIN } })).status, 200);
+      assert.equal(await (await read()).text(), expected);
+      assert.ok(performance.now() - started < 15_000, `restart ${cycle + 1} exceeded 15 seconds`);
+    }
+  } finally {
+    if (server !== undefined && server.child.exitCode === null && server.child.signalCode === null) { server.child.kill("SIGTERM"); await server.exited(); }
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+await test("startup identity is logged and available only on the authenticated runtime route", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-identity-"));
+  const commit = "abcdef1234567890abcdef1234567890abcdef12";
+  const server = await start(dataDir, { APPLICATION_EVENTS_RELEASE: "release-123", STATS_SOURCE_COMMIT: commit });
+  try {
+    assert.match(server.output(), /"event":"startup_identity"/u);
+    assert.match(server.output(), /"sourceCommit":"abcdef1234567890abcdef1234567890abcdef12"/u);
+    assert.equal((await fetch(`${server.origin}/api/v1/runtime`)).status, 401);
+    const response = await fetch(`${server.origin}/api/v1/runtime`, { headers: { "Tailscale-User-Login": LOGIN } });
+    const body = await response.json() as { identity: { release: string; sourceCommit: string; node: string; schemas: { installation: number; applicationEvents: number; metrics: string } } };
+    assert.equal(body.identity.release, "release-123");
+    assert.equal(body.identity.sourceCommit, commit);
+    assert.equal(body.identity.node, process.version);
+    assert.ok(body.identity.schemas.installation > 0);
+    assert.equal(body.identity.schemas.applicationEvents, 1);
+    assert.equal(body.identity.schemas.metrics, "stats-infra-metrics/2");
+    const health = await (await fetch(`${server.origin}/health`)).text();
+    assert.doesNotMatch(health, /release-123|abcdef1234567890|node|schema/u);
+  } finally {
+    server.child.kill("SIGTERM");
+    await server.exited();
+    rmSync(dataDir, { recursive: true, force: true });
   }
 });

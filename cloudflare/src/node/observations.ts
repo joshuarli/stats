@@ -9,28 +9,32 @@ import { createObserveService, type MaintainedService } from "../observe/core/se
 import { initializeStore } from "../observe/core/store.ts";
 import { SERVICE_SLUG, type ExternalEvent } from "../observe/ingest/model.ts";
 import { TimerScheduler } from "./ports.ts";
+import { configureSqlite, scheduleCheckpoint } from "./sqlite-policy.ts";
+import type { NodeRuntime } from "./runtime.ts";
 import { nodeSqlScopes } from "./sql.ts";
 
 const MAX_OPEN_STORES = 256;
 const MAINTENANCE_MS = 3_600_000;
 
 export class NodeObservations {
-  private readonly stores = new Map<string, { db: DatabaseSync; service: MaintainedService }>();
+  private readonly stores = new Map<string, { db: DatabaseSync; service: MaintainedService; stopCheckpoint: () => void }>();
   private readonly scheduler: TimerScheduler;
   private readonly directory: string;
 
   private readonly legacy: DatabaseSync;
   private readonly clock: Clock;
+  private readonly runtime: NodeRuntime | undefined;
 
-  constructor(legacy: DatabaseSync, path: string, clock: Clock) {
+  constructor(legacy: DatabaseSync, path: string, clock: Clock, runtime?: NodeRuntime) {
     this.legacy = legacy;
     this.clock = clock;
+    this.runtime = runtime;
     this.directory = `${path}.observe`;
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
     this.scheduler = new TimerScheduler(clock, async () => this.maintain(), error => {
       console.error(JSON.stringify({ event: "observe_cleanup_failed", name: error instanceof Error ? error.name : typeof error }));
       void this.scheduler.at(clock.now() + MAINTENANCE_MS);
-    });
+    }, ms => { for (const name of this.stores.keys()) this.runtime?.retention(`observe:${name}`, ms); });
     try {
       for (const file of readdirSync(this.directory)) {
         if (file.endsWith(".sqlite") && SERVICE_SLUG.test(file.slice(0, -7))) this.forService(file.slice(0, -7));
@@ -50,10 +54,11 @@ export class NodeObservations {
     const prior = this.stores.get(name);
     if (prior !== undefined) return prior.service;
     if (this.stores.size >= MAX_OPEN_STORES) throw new RangeError("Node supports at most 256 observation stores");
-    const db = new DatabaseSync(join(this.directory, `${name}.sqlite`));
+    const path = join(this.directory, `${name}.sqlite`);
+    const db = new DatabaseSync(path);
     try {
-      db.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN IMMEDIATE; COMMIT");
-      const sql = nodeSqlScopes(db).open();
+      configureSqlite(db);
+      const sql = nodeSqlScopes(db, this.runtime?.database(`observe:${name}`, path)).open();
       initializeStore(sql);
       this.migrate(db, name);
       const maintained = createObserveService(sql, { now: () => this.clock.now(), databaseBytes: () => sql.databaseBytes() });
@@ -64,7 +69,8 @@ export class NodeObservations {
         external: (service, filter) => { requireOwner(service); return maintained.external(name, filter); },
         externalOperations: (service, filter) => { requireOwner(service); return maintained.externalOperations(name, filter); }
       };
-      this.stores.set(name, { db, service });
+      const stopCheckpoint = scheduleCheckpoint(db, result => this.runtime?.checkpoint(`observe:${name}`, result));
+      this.stores.set(name, { db, service, stopCheckpoint });
       void this.scheduler.at(this.clock.now());
       return service;
     } catch (error) {
@@ -118,7 +124,7 @@ export class NodeObservations {
 
   close(): void {
     this.scheduler.stop();
-    for (const { db } of this.stores.values()) db.close();
+    for (const { db, stopCheckpoint } of this.stores.values()) { stopCheckpoint(); db.close(); }
     this.stores.clear();
   }
 }

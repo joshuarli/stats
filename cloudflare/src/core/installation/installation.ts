@@ -46,6 +46,7 @@ const COMPARISON_METRICS_SQL = "SELECT metric, bucket_ms, value FROM project_sam
 export interface InstallationPorts {
   readonly sql: SqlScopes;
   readonly clock: Clock;
+  readonly monotonic?: () => number;
   readonly scheduler: Scheduler;
   readonly operations: OperationSink;
   readonly probesServices: boolean;
@@ -133,7 +134,7 @@ export class InstallationCore {
   }
 
   operationRun(): OperationRun {
-    const now = (): number => this.ports.clock.now();
+    const now = this.ports.monotonic ?? (() => this.ports.clock.now());
     return new OperationRun(this.ports.sql.open(), this.ports.operations, now);
   }
 
@@ -848,12 +849,13 @@ export class InstallationCore {
     return json(compareServiceDeployment({ service: name, deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, probeSource: service.healthUrl === null ? "no-health-url" : this.ports.probesServices ? "probed" : "not-probed", window, now, truncated: history.deployments.length >= MARKERS_LISTED, applicationEvents, applicationTruncated, applicationProblem }));
   }
 
-  async collectServiceProbes(fetch: ProbeFetch): Promise<void> {
+  async collectServiceProbes(fetch: ProbeFetch, signal?: AbortSignal): Promise<void> {
     const operation = this.operationRun();
     try {
       const now = this.now();
       const targets = listServices(operation.sql).flatMap(service => service.healthUrl === null ? [] : [{ name: service.name, url: service.healthUrl }]);
-      const collected = await Promise.all(targets.map(async target => ({ name: target.name, points: await runProbes({ fetch, probes: [{ name: SERVICE_PROBE_NAME, url: target.url }], now, clock: () => this.now() }) })));
+      const collected = await Promise.all(targets.map(async target => ({ name: target.name, points: await runProbes({ fetch, probes: [{ name: SERVICE_PROBE_NAME, url: target.url }], now, clock: this.ports.monotonic ?? (() => this.now()) }) })));
+      if (signal?.aborted) return;
       operation.sql.transaction(() => {
         for (const entry of collected) upsertPoints(operation.sql, serviceProbeOwner(entry.name), entry.points);
       });

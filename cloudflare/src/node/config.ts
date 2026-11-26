@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { isIP } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
@@ -9,7 +9,11 @@ export type Listen =
   | { readonly kind: "tcp"; readonly host: string; readonly port: number }
   | { readonly kind: "unix"; readonly path: string };
 
+export type NodeAuth = { readonly kind: "tailscale" } | { readonly kind: "gateway"; readonly secret: string };
+
 export interface NodeConfig {
+  readonly sourceCommit: string | null;
+  readonly auth: NodeAuth;
   readonly databasePath: string;
   readonly listen: Listen;
 }
@@ -56,8 +60,28 @@ function listen(value: string | undefined): Listen {
   return { kind: "tcp", host, port };
 }
 
+function auth(env: Readonly<Record<string, string | undefined>>): NodeAuth {
+  const mode = env["STATS_AUTH"] ?? "tailscale";
+  if (mode === "tailscale") return { kind: "tailscale" };
+  if (mode !== "gateway") throw new NodeConfigError("STATS_AUTH must be tailscale or gateway");
+  const path = env["STATS_GATEWAY_SECRET_FILE"];
+  if (path === undefined || path === "") throw new NodeConfigError("STATS_GATEWAY_SECRET_FILE is required in gateway mode");
+  let secret: string;
+  try {
+    secret = readFileSync(path, "utf8").trim();
+  } catch {
+    throw new NodeConfigError("STATS_GATEWAY_SECRET_FILE cannot be read");
+  }
+  if (secret === "" || /[\r\n]/u.test(secret)) throw new NodeConfigError("STATS_GATEWAY_SECRET_FILE must contain a nonempty single-line secret");
+  return { kind: "gateway", secret };
+}
+
 export function nodeConfig(env: Readonly<Record<string, string | undefined>>): NodeConfig {
+  const sourceCommit = env["STATS_SOURCE_COMMIT"];
+  if (sourceCommit !== undefined && !/^[a-f0-9]{7,64}$/u.test(sourceCommit)) throw new NodeConfigError("STATS_SOURCE_COMMIT must be a lowercase hexadecimal commit identifier");
   return {
+    sourceCommit: sourceCommit ?? null,
+    auth: auth(env),
     databasePath: join(dataDirectory(env["STATS_DATA_DIR"]), DATABASE_FILE),
     listen: listen(env["STATS_LISTEN"])
   };
